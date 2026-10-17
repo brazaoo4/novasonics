@@ -76,6 +76,7 @@ namespace NovaSonics.ViewModels
             App.Current.Dispatcher.Invoke(() =>
             {
                 HeadsetStatus = status;
+                OnPropertyChanged(nameof(HeadsetStatus));
 
                 // Check battery alert threshold (30%)
                 if (status.IsHeadsetOnline && !status.IsCharging && status.BatteryPercent > 0)

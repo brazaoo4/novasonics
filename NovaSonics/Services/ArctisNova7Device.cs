@@ -10,7 +10,7 @@ namespace NovaSonics.Services
     public class ArctisNova7Device : IHeadsetService
     {
         private const int VendorId = 0x1038;
-        private static readonly int[] ProductIds = { 0x2202, 0x227E, 0x22A1, 0x2206, 0x229E, 0x220A, 0x2242 };
+        private static readonly int[] ProductIds = { 0x2202, 0x227E, 0x22A1 };
 
         private const byte OpcodeStatus = 0xB0;
         private const byte OpcodeSidetone = 0x39;

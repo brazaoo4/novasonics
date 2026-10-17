@@ -29,17 +29,22 @@ namespace NovaSonics.Services
 
         public ObservableCollection<AppSessionModel> ActiveSessions { get; } = new();
 
-        public float MasterVolume { get; set; } = 1.0f;
-        public float GameVolume { get; set; } = 1.0f;
-        public float ChatVolume { get; set; } = 1.0f;
-        public float MicVolume { get; set; } = 1.0f;
+        private float _masterVolume = 1.0f, _gameVolume = 1.0f, _chatVolume = 1.0f, _micVolume = 1.0f;
+        private bool _masterMuted, _gameMuted, _chatMuted, _micMuted;
+        private float _chatMixBalance;
+        private DispatcherTimer? _refreshTimer;
 
-        public bool MasterMuted { get; set; } = false;
-        public bool GameMuted { get; set; } = false;
-        public bool ChatMuted { get; set; } = false;
-        public bool MicMuted { get; set; } = false;
+        public float MasterVolume { get => _masterVolume; set { _masterVolume = value; ApplyVolumes(); } }
+        public float GameVolume { get => _gameVolume; set { _gameVolume = value; ApplyVolumes(); } }
+        public float ChatVolume { get => _chatVolume; set { _chatVolume = value; ApplyVolumes(); } }
+        public float MicVolume { get => _micVolume; set { _micVolume = value; ApplyVolumes(); } }
 
-        public float ChatMixBalance { get; set; } = 0.0f;
+        public bool MasterMuted { get => _masterMuted; set { _masterMuted = value; ApplyVolumes(); } }
+        public bool GameMuted { get => _gameMuted; set { _gameMuted = value; ApplyVolumes(); } }
+        public bool ChatMuted { get => _chatMuted; set { _chatMuted = value; ApplyVolumes(); } }
+        public bool MicMuted { get => _micMuted; set { _micMuted = value; ApplyVolumes(); } }
+
+        public float ChatMixBalance { get => _chatMixBalance; set { _chatMixBalance = Math.Clamp(value, -1f, 1f); ApplyVolumes(); } }
 
         public float MasterPeak { get; private set; }
         public float GamePeak { get; private set; }
@@ -118,6 +123,10 @@ namespace NovaSonics.Services
             };
             _peakTimer.Tick += PeakTimer_Tick;
             _peakTimer.Start();
+
+            _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _refreshTimer.Tick += (_, _) => RefreshSessions();
+            _refreshTimer.Start();
         }
 
         public void RebindEndpoint()
@@ -258,6 +267,12 @@ namespace NovaSonics.Services
                 // Master volume
                 _defaultRenderDevice.AudioEndpointVolume.MasterVolumeLevelScalar = MasterMuted ? 0.0f : MasterVolume;
                 _defaultRenderDevice.AudioEndpointVolume.Mute = MasterMuted;
+
+                if (_defaultCaptureDevice != null)
+                {
+                    _defaultCaptureDevice.AudioEndpointVolume.MasterVolumeLevelScalar = MicVolume;
+                    _defaultCaptureDevice.AudioEndpointVolume.Mute = MicMuted;
+                }
 
                 // Compute ChatMix scalars
                 // Balance C in [-1.0, +1.0]

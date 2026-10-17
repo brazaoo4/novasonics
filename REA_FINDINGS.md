@@ -12,8 +12,7 @@ This document details the reverse engineering discoveries extracted from the liv
   * `0x2202`: Arctis Nova 7 Wireless Transmitter (Gen 1)
   * `0x227E`: Arctis Nova 7 Wireless Transmitter (Gen 2)
   * `0x22A1`: Arctis Nova 7 Wireless Transmitter (Gen 2 Upgrade / Current Hardware)
-  * `0x2206` / `0x229E`: Arctis Nova 7X (Xbox Wireless Variant)
-  * `0x220A` / `0x2242`: Arctis Nova 7P (PlayStation Wireless Variant)
+  * Other Nova 7 variants (7X / 7P / WoW / Diablo IV editions) use different PIDs in the GG database; they were **not** verified and are not supported by NovaSonics.
 * **USB Composite Topology:**
   * **Interface 0 & 1:** USB Audio Streaming (Audio Class 1.0/2.0 — Speaker/Headphones & Microphone endpoints).
   * **Interface 3 (Control Interface):**
@@ -170,6 +169,6 @@ Exported to [`Resources/default_app_categories.json`](file:///C:/projects/titani
   * Output Report write to opcode `0xB0` returned 64-byte payload:
     `B0 02 35 00 64 64 00 00 01 ...`
   * Decoded: `Opcode=0xB0`, `State=0x02` (Offline/Standby), `Battery=53%`, `GameAtt=100`, `ChatAtt=100`, `Charging=True`.
-  * Verified hardware commands: `0x39` (Sidetone), `0xA3` (Inactivity timer), `0x37` (Mic mute LED).
+  * **UNVERIFIED:** hardware opcodes `0x39` / `0xA3` / `0x37` were written to the device but returned no response, so their effect and value encodings are not confirmed. ChatMix bytes 4/5 and the battery scale are inferred; the headset was powered off during the test (values 100/100). Needs live capture with the headset on.
 
-Phase 1 Reverse Engineering and Asset Extraction is complete. All findings and assets are safely committed to the repository, enabling full implementation of Phase 2 (C# .NET 8 Standalone Architecture).
+Phase 1 is **partially complete**: static findings are documented, but the live-hardware items above still need capture with the headset powered on. Do not uninstall GG until they are confirmed.
