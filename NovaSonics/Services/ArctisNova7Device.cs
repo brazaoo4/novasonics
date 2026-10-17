@@ -91,14 +91,18 @@ namespace NovaSonics.Services
                         return false;
                     }
 
-                    // 1. Locate Command Interface (UsagePage 0xFFC0, Usage 0x0001, 65-byte report)
+                    // 1. Locate Command Interface (UsagePage 0xFFC0, MI_03 / Col01, 65-byte report)
                     var cmdDev = devices.FirstOrDefault(d =>
                         d.GetMaxInputReportLength() == 65 &&
                         d.GetMaxOutputReportLength() == 65 &&
-                        (d.DevicePath.Contains("col01", StringComparison.OrdinalIgnoreCase) ||
+                        (d.DevicePath.Contains("&mi_03", StringComparison.OrdinalIgnoreCase) ||
+                         d.DevicePath.Contains("col01", StringComparison.OrdinalIgnoreCase) ||
                          GetUsagePageSafe(d) == 0xFFC0));
 
-                    cmdDev ??= devices.FirstOrDefault(d => d.GetMaxInputReportLength() == 65 && d.GetMaxOutputReportLength() == 65);
+                    cmdDev ??= devices.FirstOrDefault(d =>
+                        d.GetMaxInputReportLength() == 65 &&
+                        d.GetMaxOutputReportLength() == 65 &&
+                        GetUsagePageSafe(d) == 0xFFC0);
 
                     if (cmdDev != null && cmdDev.TryOpen(out _commandStream))
                     {
@@ -108,10 +112,11 @@ namespace NovaSonics.Services
                         Status.IsDeviceConnected = true;
                     }
 
-                    // 2. Locate Sync Interrupt Interface (UsagePage 0xFF00, Usage 0x0001, Col02)
+                    // 2. Locate Sync Interrupt Interface (UsagePage 0xFF00, MI_05 / Col02)
                     var syncDev = devices.FirstOrDefault(d =>
                         d != cmdDev &&
-                        (d.DevicePath.Contains("col02", StringComparison.OrdinalIgnoreCase) ||
+                        (d.DevicePath.Contains("&mi_05", StringComparison.OrdinalIgnoreCase) ||
+                         d.DevicePath.Contains("col02", StringComparison.OrdinalIgnoreCase) ||
                          GetUsagePageSafe(d) == 0xFF00));
 
                     if (syncDev != null)
