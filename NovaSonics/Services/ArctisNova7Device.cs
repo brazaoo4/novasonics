@@ -423,6 +423,21 @@ namespace NovaSonics.Services
             return Task.Run(() => SendWriteAndSaveToFlash(0x3A, val));
         }
 
+        public Task SetEqualizerBandsAsync(float[] bands)
+        {
+            if (bands == null || bands.Length != 10) return Task.CompletedTask;
+            byte[] args = new byte[10];
+            for (int i = 0; i < 10; i++)
+            {
+                float clamped = Math.Clamp(bands[i], -10.0f, 10.0f);
+                // Formula from base_arctis_nova_7_tx.edevice: (integer (* 2 (+ 10 gain)))
+                // -10dB -> 0, 0dB -> 20, +10dB -> 40
+                args[i] = (byte)Math.Clamp((int)Math.Round(2 * (10.0f + clamped)), 0, 40);
+            }
+
+            return Task.Run(() => SendWriteAndSaveToFlash(0x33, args));
+        }
+
         public void Dispose()
         {
             Stop();

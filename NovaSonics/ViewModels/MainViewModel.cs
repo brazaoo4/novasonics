@@ -26,6 +26,7 @@ namespace NovaSonics.ViewModels
 
         public MixerViewModel MixerVM { get; }
         public DeviceManagerViewModel DeviceManagerVM { get; }
+        public EqualizerViewModel EqualizerVM { get; }
         public HardwareViewModel HardwareVM { get; }
 
         public MainViewModel(
@@ -45,6 +46,7 @@ namespace NovaSonics.ViewModels
 
             MixerVM = new MixerViewModel(_mixerService, _configService);
             DeviceManagerVM = new DeviceManagerViewModel(_deviceService, _configService);
+            EqualizerVM = new EqualizerViewModel(_headsetService, _configService, _notificationService);
             HardwareVM = new HardwareViewModel(_headsetService, _configService, _notificationService);
 
             MixerVM.ActiveEndpointName = _deviceService.CurrentDefaultDevice?.Name ?? "Default Endpoint";

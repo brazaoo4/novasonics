@@ -77,8 +77,27 @@
                             </RadioButton.Style>
                         </RadioButton>
 
-                        <RadioButton Content="⚙️ Settings" Width="100" Height="36" Margin="4,0"
+                        <RadioButton Content="🎛️ Equalizer" Width="105" Height="36" Margin="4,0"
                                      Command="{Binding SelectTabCommand}" CommandParameter="2">
+                            <RadioButton.Style>
+                                <Style TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                    <Setter Property="Background" Value="#1E222B"/>
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                    <Setter Property="BorderBrush" Value="#2D3340"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter Property="Background" Value="#00E5FF"/>
+                                            <Setter Property="Foreground" Value="#0F172A"/>
+                                            <Setter Property="BorderBrush" Value="#00E5FF"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </RadioButton.Style>
+                        </RadioButton>
+
+                        <RadioButton Content="⚙️ Settings" Width="100" Height="36" Margin="4,0"
+                                     Command="{Binding SelectTabCommand}" CommandParameter="3">
                             <RadioButton.Style>
                                 <Style TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
                                     <Setter Property="Background" Value="#1E222B"/>
@@ -183,13 +202,27 @@
                 </views:DeviceManagerView.Style>
             </views:DeviceManagerView>
 
-            <!-- 2. HARDWARE VIEW -->
+            <!-- 2. EQUALIZER VIEW -->
+            <views:EqualizerView DataContext="{Binding EqualizerVM}">
+                <views:EqualizerView.Style>
+                    <Style TargetType="views:EqualizerView">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.SelectedTabIndex, RelativeSource={RelativeSource AncestorType=Window}}" Value="2">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </views:EqualizerView.Style>
+            </views:EqualizerView>
+
+            <!-- 3. HARDWARE & SETTINGS VIEW -->
             <views:HardwareView DataContext="{Binding HardwareVM}">
                 <views:HardwareView.Style>
                     <Style TargetType="views:HardwareView">
                         <Setter Property="Visibility" Value="Collapsed" />
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding DataContext.SelectedTabIndex, RelativeSource={RelativeSource AncestorType=Window}}" Value="2">
+                            <DataTrigger Binding="{Binding DataContext.SelectedTabIndex, RelativeSource={RelativeSource AncestorType=Window}}" Value="3">
                                 <Setter Property="Visibility" Value="Visible" />
                             </DataTrigger>
                         </Style.Triggers>

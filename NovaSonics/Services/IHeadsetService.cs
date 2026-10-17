@@ -21,5 +21,6 @@ namespace NovaSonics.Services
         Task SetMicMuteBrightnessAsync(int level);
         Task SetMicVolumeLevelAsync(int level);
         Task SetVolumeLimiterAsync(bool enabled);
+        Task SetEqualizerBandsAsync(float[] bands);
     }
 }

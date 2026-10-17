@@ -24,6 +24,9 @@ namespace NovaSonics.Models
         public int HardwareMicVolume { get; set; } = 7; // 0..7 hardware mic level
         public bool VolumeLimiterEnabled { get; set; } = true; // 0=105dB max, 1=99dB max
 
+        public float[] EqualizerBands { get; set; } = new float[10] { 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f }; // 10 bands (-10 to +10 dB)
+        public string EqualizerPreset { get; set; } = "Flat";
+
         public bool AutoSwitchEnabled { get; set; } = true;
         public bool AutoSwitchAtBoot { get; set; } = true;
         public bool AutoSwitchOnPowerOff { get; set; } = true;

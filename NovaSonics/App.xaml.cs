@@ -19,6 +19,15 @@ namespace NovaSonics
         {
             base.OnStartup(e);
 
+            AppDomain.CurrentDomain.UnhandledException += (s, args) =>
+            {
+                System.IO.File.WriteAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log"), args.ExceptionObject.ToString());
+            };
+            DispatcherUnhandledException += (s, args) =>
+            {
+                System.IO.File.WriteAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log"), args.Exception.ToString());
+            };
+
             _configService = new ConfigService();
             _notificationService = new ToastNotificationService();
             _headsetService = new ArctisNova7Device();
