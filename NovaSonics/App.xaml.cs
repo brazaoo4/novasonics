@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Windows;
 using NovaSonics.Services;
 using NovaSonics.ViewModels;
@@ -26,6 +27,9 @@ namespace NovaSonics
 
             _mixerService.Initialize();
 
+            // Sync Windows autostart registry entry with config
+            StartupHelper.SetEnabled(_configService.Config.StartMinimizedToTray);
+
             var mainVm = new MainViewModel(
                 _headsetService,
                 _mixerService,
@@ -35,7 +39,8 @@ namespace NovaSonics
 
             _mainWindow = new MainWindow(mainVm, _configService);
 
-            if (_configService.Config.StartMinimizedToTray)
+            bool launchedMinimized = e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase));
+            if (launchedMinimized && _configService.Config.StartMinimizedToTray)
             {
                 _mainWindow.WindowState = WindowState.Minimized;
                 _mainWindow.Hide();

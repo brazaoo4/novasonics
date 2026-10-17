@@ -47,6 +47,8 @@ namespace NovaSonics.ViewModels
             DeviceManagerVM = new DeviceManagerViewModel(_deviceService, _configService);
             HardwareVM = new HardwareViewModel(_headsetService, _configService, _notificationService);
 
+            MixerVM.ActiveEndpointName = _deviceService.CurrentDefaultDevice?.Name ?? "Default Endpoint";
+
             _headsetService.StatusUpdated += OnHeadsetStatusUpdated;
             _headsetService.ChatMixChanged += OnChatMixChanged;
             _headsetService.PowerStateChanged += OnPowerStateChanged;
@@ -54,6 +56,7 @@ namespace NovaSonics.ViewModels
             _deviceService.DefaultDeviceChanged += (s, d) =>
             {
                 _mixerService.RebindEndpoint();
+                MixerVM.ActiveEndpointName = d.Name;
             };
 
             _uiTimer = new DispatcherTimer
@@ -66,8 +69,7 @@ namespace NovaSonics.ViewModels
             };
             _uiTimer.Start();
 
-            // Startup sync
-            _deviceService.EnforcePriorityDevice();
+            // Start HID polling; initial poll will fire PowerStateChanged(isOnline) to enforce priority/fallback device safely
             _headsetService.Start();
         }
 
@@ -114,6 +116,7 @@ namespace NovaSonics.ViewModels
             App.Current.Dispatcher.Invoke(() =>
             {
                 _deviceService.HandleHeadsetPowerStateChanged(isOnline);
+                DeviceManagerVM.RefreshLists();
             });
         }
 

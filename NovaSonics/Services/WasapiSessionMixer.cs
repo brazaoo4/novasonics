@@ -19,32 +19,75 @@ namespace NovaSonics.Services
     public class WasapiSessionMixer : IAudioMixerService
     {
         private readonly IConfigService _configService;
-        private readonly MMDeviceEnumerator _deviceEnumerator;
+        private readonly MMDeviceEnumerator _enumerator;
         private MMDevice? _defaultRenderDevice;
         private MMDevice? _defaultCaptureDevice;
         private DispatcherTimer? _peakTimer;
+        private DispatcherTimer? _sessionRefreshTimer;
+        private readonly object _sessionLock = new();
 
-        private readonly Dictionary<string, string> _defaultCategoryMap = new(StringComparer.OrdinalIgnoreCase);
-        private readonly HashSet<string> _excludedProcesses = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _defaultChatProcesses = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _defaultGameProcesses = new(StringComparer.OrdinalIgnoreCase);
 
         public ObservableCollection<AppSessionModel> ActiveSessions { get; } = new();
 
-        private float _masterVolume = 1.0f, _gameVolume = 1.0f, _chatVolume = 1.0f, _micVolume = 1.0f;
-        private bool _masterMuted, _gameMuted, _chatMuted, _micMuted;
+        private float _masterVolume = 1.0f;
+        private float _gameVolume = 1.0f;
+        private float _chatVolume = 1.0f;
+        private float _micVolume = 1.0f;
+        private bool _masterMuted;
+        private bool _gameMuted;
+        private bool _chatMuted;
+        private bool _micMuted;
         private float _chatMixBalance;
-        private DispatcherTimer? _refreshTimer;
 
-        public float MasterVolume { get => _masterVolume; set { _masterVolume = value; ApplyVolumes(); } }
-        public float GameVolume { get => _gameVolume; set { _gameVolume = value; ApplyVolumes(); } }
-        public float ChatVolume { get => _chatVolume; set { _chatVolume = value; ApplyVolumes(); } }
-        public float MicVolume { get => _micVolume; set { _micVolume = value; ApplyVolumes(); } }
+        public float MasterVolume
+        {
+            get => _masterVolume;
+            set { _masterVolume = Math.Clamp(value, 0f, 1f); ApplyVolumes(); }
+        }
+        public float GameVolume
+        {
+            get => _gameVolume;
+            set { _gameVolume = Math.Clamp(value, 0f, 1f); ApplyVolumes(); }
+        }
+        public float ChatVolume
+        {
+            get => _chatVolume;
+            set { _chatVolume = Math.Clamp(value, 0f, 1f); ApplyVolumes(); }
+        }
+        public float MicVolume
+        {
+            get => _micVolume;
+            set { _micVolume = Math.Clamp(value, 0f, 1f); ApplyCaptureVolume(); }
+        }
 
-        public bool MasterMuted { get => _masterMuted; set { _masterMuted = value; ApplyVolumes(); } }
-        public bool GameMuted { get => _gameMuted; set { _gameMuted = value; ApplyVolumes(); } }
-        public bool ChatMuted { get => _chatMuted; set { _chatMuted = value; ApplyVolumes(); } }
-        public bool MicMuted { get => _micMuted; set { _micMuted = value; ApplyVolumes(); } }
+        public bool MasterMuted
+        {
+            get => _masterMuted;
+            set { _masterMuted = value; ApplyVolumes(); }
+        }
+        public bool GameMuted
+        {
+            get => _gameMuted;
+            set { _gameMuted = value; ApplyVolumes(); }
+        }
+        public bool ChatMuted
+        {
+            get => _chatMuted;
+            set { _chatMuted = value; ApplyVolumes(); }
+        }
+        public bool MicMuted
+        {
+            get => _micMuted;
+            set { _micMuted = value; ApplyCaptureVolume(); }
+        }
 
-        public float ChatMixBalance { get => _chatMixBalance; set { _chatMixBalance = Math.Clamp(value, -1f, 1f); ApplyVolumes(); } }
+        public float ChatMixBalance
+        {
+            get => _chatMixBalance;
+            set { _chatMixBalance = Math.Clamp(value, -1f, 1f); ApplyVolumes(); }
+        }
 
         public float MasterPeak { get; private set; }
         public float GamePeak { get; private set; }
@@ -54,7 +97,7 @@ namespace NovaSonics.Services
         public WasapiSessionMixer(IConfigService configService)
         {
             _configService = configService;
-            _deviceEnumerator = new MMDeviceEnumerator();
+            _enumerator = new MMDeviceEnumerator();
             LoadDefaultCategories();
         }
 
@@ -62,55 +105,42 @@ namespace NovaSonics.Services
         {
             try
             {
-                string jsonPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "default_app_categories.json");
-                if (File.Exists(jsonPath))
+                string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "default_app_categories.json");
+                if (File.Exists(path))
                 {
-                    string json = File.ReadAllText(jsonPath);
+                    string json = File.ReadAllText(path);
                     using var doc = JsonDocument.Parse(json);
-                    var root = doc.RootElement;
-
-                    if (root.TryGetProperty("categories", out var cats))
+                    if (doc.RootElement.TryGetProperty("categories", out var cats))
                     {
-                        if (cats.TryGetProperty("chat", out var chatList))
+                        if (cats.TryGetProperty("chat", out var chatArr))
                         {
-                            foreach (var item in chatList.EnumerateArray())
-                            {
-                                string name = item.GetString() ?? "";
-                                if (!string.IsNullOrEmpty(name)) _defaultCategoryMap[name] = "chat";
-                            }
+                            foreach (var item in chatArr.EnumerateArray())
+                                _defaultChatProcesses.Add(Path.GetFileNameWithoutExtension(item.GetString() ?? ""));
                         }
-                        if (cats.TryGetProperty("game", out var gameList))
+                        if (cats.TryGetProperty("game", out var gameArr))
                         {
-                            foreach (var item in gameList.EnumerateArray())
-                            {
-                                string name = item.GetString() ?? "";
-                                if (!string.IsNullOrEmpty(name)) _defaultCategoryMap[name] = "game";
-                            }
+                            foreach (var item in gameArr.EnumerateArray())
+                                _defaultGameProcesses.Add(Path.GetFileNameWithoutExtension(item.GetString() ?? ""));
                         }
-                        if (cats.TryGetProperty("media", out var mediaList))
+                        if (cats.TryGetProperty("media", out var mediaArr))
                         {
-                            foreach (var item in mediaList.EnumerateArray())
-                            {
-                                string name = item.GetString() ?? "";
-                                if (!string.IsNullOrEmpty(name)) _defaultCategoryMap[name] = "game"; // Route media to Game by default
-                            }
+                            foreach (var item in mediaArr.EnumerateArray())
+                                _defaultGameProcesses.Add(Path.GetFileNameWithoutExtension(item.GetString() ?? ""));
                         }
-                    }
-
-                    if (root.TryGetProperty("exclusions", out var excl))
-                    {
-                        foreach (var item in excl.EnumerateArray())
+                        if (cats.TryGetProperty("browser", out var browserArr))
                         {
-                            string name = item.GetString() ?? "";
-                            if (!string.IsNullOrEmpty(name)) _excludedProcesses.Add(name);
+                            foreach (var item in browserArr.EnumerateArray())
+                                _defaultGameProcesses.Add(Path.GetFileNameWithoutExtension(item.GetString() ?? ""));
                         }
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error loading default categories: {ex.Message}");
-            }
+            catch { }
+
+            string[] builtInChat = { "Discord", "TeamSpeak3", "ts3client_win64", "Zoom", "Teams", "ms-teams", "Slack", "Skype", "Mumble", "Ventrilo" };
+            foreach (var c in builtInChat) _defaultChatProcesses.Add(c);
+            string[] builtInGame = { "chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "Spotify", "vlc" };
+            foreach (var g in builtInGame) _defaultGameProcesses.Add(g);
         }
 
         public void Initialize()
@@ -119,34 +149,51 @@ namespace NovaSonics.Services
 
             _peakTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromMilliseconds(33) // ~30 FPS
+                Interval = TimeSpan.FromMilliseconds(33) // ~30 FPS peak metering
             };
             _peakTimer.Tick += PeakTimer_Tick;
             _peakTimer.Start();
 
-            _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            _refreshTimer.Tick += (_, _) => RefreshSessions();
-            _refreshTimer.Start();
+            _sessionRefreshTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1)
+            };
+            _sessionRefreshTimer.Tick += (s, e) => RefreshSessions();
+            _sessionRefreshTimer.Start();
         }
 
         public void RebindEndpoint()
         {
-            try
+            lock (_sessionLock)
             {
-                _defaultRenderDevice = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
                 try
                 {
-                    _defaultCaptureDevice = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
+                    _defaultRenderDevice?.Dispose();
+                    _defaultCaptureDevice?.Dispose();
+
+                    _defaultRenderDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                    try
+                    {
+                        _defaultCaptureDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
+                    }
+                    catch { }
+
+                    if (_defaultRenderDevice != null)
+                    {
+                        _defaultRenderDevice.AudioSessionManager.OnSessionCreated += AudioSessionManager_OnSessionCreated;
+                    }
+
+                    ApplyCaptureVolume();
                 }
                 catch { }
+            }
 
-                RefreshSessions();
-                ApplyVolumes();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Failed to bind endpoint: {ex.Message}");
-            }
+            RefreshSessions();
+        }
+
+        private void AudioSessionManager_OnSessionCreated(object sender, IAudioSessionControl newSession)
+        {
+            Application.Current?.Dispatcher?.InvokeAsync(RefreshSessions);
         }
 
         public void RefreshSessions()
@@ -155,225 +202,260 @@ namespace NovaSonics.Services
 
             try
             {
-                var mgr = _defaultRenderDevice.AudioSessionManager;
-                if (mgr == null) return;
-
-                var sessions = mgr.Sessions;
-                var currentPids = new HashSet<int>();
-
-                for (int i = 0; i < sessions.Count; i++)
+                List<AppSessionModel> snapshot;
+                lock (_sessionLock)
                 {
-                    var session = sessions[i];
-                    int pid = (int)session.GetProcessID;
-                    if (pid <= 0) continue;
+                    _defaultRenderDevice.AudioSessionManager.RefreshSessions();
+                    var sessions = _defaultRenderDevice.AudioSessionManager.Sessions;
+                    var currentModels = new Dictionary<string, AppSessionModel>(StringComparer.OrdinalIgnoreCase);
 
-                    currentPids.Add(pid);
-                    var existing = ActiveSessions.FirstOrDefault(s => s.ProcessId == pid);
-
-                    if (existing == null)
+                    for (int i = 0; i < sessions.Count; i++)
                     {
+                        var s = sessions[i];
+                        int pid = (int)s.GetProcessID;
+                        if (pid == 0 || s.IsSystemSoundsSession) continue;
+
+                        string procName = string.Empty;
+                        string displayName = s.DisplayName;
+                        BitmapSource? icon = null;
+
                         try
                         {
                             using var proc = Process.GetProcessById(pid);
-                            string procName = proc.ProcessName + ".exe";
-
-                            if (_excludedProcesses.Contains(procName) || _excludedProcesses.Contains(proc.ProcessName))
+                            procName = proc.ProcessName;
+                            if (string.IsNullOrWhiteSpace(displayName))
                             {
-                                continue;
+                                displayName = !string.IsNullOrWhiteSpace(proc.MainWindowTitle) ? proc.MainWindowTitle : procName;
                             }
-
-                            string displayName = string.IsNullOrWhiteSpace(session.DisplayName) ? proc.ProcessName : session.DisplayName;
-                            BitmapSource? iconSource = null;
 
                             try
                             {
-                                string exePath = proc.MainModule?.FileName ?? "";
-                                if (File.Exists(exePath))
+                                string? exePath = proc.MainModule?.FileName;
+                                if (!string.IsNullOrEmpty(exePath) && File.Exists(exePath))
                                 {
-                                    using var icon = Icon.ExtractAssociatedIcon(exePath);
-                                    if (icon != null)
+                                    using var sysIcon = Icon.ExtractAssociatedIcon(exePath);
+                                    if (sysIcon != null)
                                     {
-                                        iconSource = Imaging.CreateBitmapSourceFromHIcon(
-                                            icon.Handle,
+                                        icon = Imaging.CreateBitmapSourceFromHIcon(
+                                            sysIcon.Handle,
                                             Int32Rect.Empty,
-                                            BitmapSizeOptions.FromEmptyOptions());
-                                        iconSource.Freeze();
+                                            BitmapSizeOptions.FromWidthAndHeight(24, 24));
+                                        icon.Freeze();
                                     }
                                 }
                             }
                             catch { }
+                        }
+                        catch
+                        {
+                            continue;
+                        }
 
-                            // Determine channel assignment
-                            AppChannel channel = AppChannel.Master;
-                            var savedAssignments = _configService.Config.AppChannelAssignments;
-                            if (savedAssignments.TryGetValue(procName, out var savedChan))
-                            {
-                                if (Enum.TryParse<AppChannel>(savedChan, true, out var parsed))
-                                {
-                                    channel = parsed;
-                                }
-                            }
-                            else if (_defaultCategoryMap.TryGetValue(procName, out var defCat))
-                            {
-                                channel = defCat.Equals("chat", StringComparison.OrdinalIgnoreCase) ? AppChannel.Chat : AppChannel.Game;
-                            }
+                        if (string.IsNullOrWhiteSpace(procName)) continue;
 
-                            var appModel = new AppSessionModel
+                        if (!currentModels.ContainsKey(procName))
+                        {
+                            var channel = DetermineChannelForProcess(procName);
+                            currentModels[procName] = new AppSessionModel
                             {
                                 ProcessId = pid,
-                                ProcessName = proc.ProcessName,
+                                ProcessName = procName,
                                 DisplayName = displayName,
-                                Icon = iconSource,
+                                Icon = icon,
                                 Channel = channel,
-                                Volume = session.SimpleAudioVolume.Volume,
-                                IsMuted = session.SimpleAudioVolume.Mute
+                                Volume = s.SimpleAudioVolume.Volume,
+                                IsMuted = s.SimpleAudioVolume.Mute
                             };
-
-                            Application.Current.Dispatcher.Invoke(() => ActiveSessions.Add(appModel));
                         }
-                        catch { }
                     }
+
+                    snapshot = currentModels.Values.ToList();
                 }
 
-                // Remove ended sessions
-                var toRemove = ActiveSessions.Where(s => !currentPids.Contains(s.ProcessId)).ToList();
-                foreach (var item in toRemove)
+                Application.Current?.Dispatcher?.Invoke(() =>
                 {
-                    Application.Current.Dispatcher.Invoke(() => ActiveSessions.Remove(item));
-                }
+                    var toRemove = ActiveSessions.Where(a => !snapshot.Any(s => s.ProcessName.Equals(a.ProcessName, StringComparison.OrdinalIgnoreCase))).ToList();
+                    foreach (var r in toRemove) ActiveSessions.Remove(r);
+
+                    foreach (var kv in snapshot)
+                    {
+                        var existing = ActiveSessions.FirstOrDefault(a => a.ProcessName.Equals(kv.ProcessName, StringComparison.OrdinalIgnoreCase));
+                        if (existing == null)
+                        {
+                            ActiveSessions.Add(kv);
+                        }
+                        else
+                        {
+                            existing.ProcessId = kv.ProcessId;
+                            existing.Channel = kv.Channel;
+                        }
+                    }
+                });
 
                 ApplyVolumes();
             }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error enumerating sessions: {ex.Message}");
-            }
+            catch { }
         }
 
-        public void SetAppChannel(AppSessionModel app, AppChannel channel)
+        private AppChannel DetermineChannelForProcess(string processName)
         {
-            app.Channel = channel;
-            _configService.Config.AppChannelAssignments[app.ProcessName + ".exe"] = channel.ToString();
+            if (_configService.Config.AppChannelAssignments.TryGetValue(processName, out string? saved))
+            {
+                if (string.Equals(saved, "chat", StringComparison.OrdinalIgnoreCase))
+                    return AppChannel.Chat;
+                if (string.Equals(saved, "game", StringComparison.OrdinalIgnoreCase))
+                    return AppChannel.Game;
+                if (string.Equals(saved, "master", StringComparison.OrdinalIgnoreCase))
+                    return AppChannel.Master;
+            }
+
+            if (_defaultChatProcesses.Contains(processName))
+                return AppChannel.Chat;
+
+            if (_defaultGameProcesses.Contains(processName))
+                return AppChannel.Game;
+
+            // Unclassified processes start in "Apps to be routed" (Master column)
+            return AppChannel.Master;
+        }
+
+        public void SetAppChannel(AppSessionModel session, AppChannel channel)
+        {
+            session.Channel = channel;
+            session.IsPinned = (channel != AppChannel.Master);
+            _configService.Config.AppChannelAssignments[session.ProcessName] = channel switch
+            {
+                AppChannel.Chat => "chat",
+                AppChannel.Game => "game",
+                _ => "master"
+            };
             _configService.Save();
             ApplyVolumes();
+        }
+
+        private void ApplyCaptureVolume()
+        {
+            if (_defaultCaptureDevice == null) return;
+            try
+            {
+                _defaultCaptureDevice.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(MicVolume, 0f, 1f);
+                _defaultCaptureDevice.AudioEndpointVolume.Mute = MicMuted;
+            }
+            catch { }
         }
 
         public void ApplyVolumes()
         {
             if (_defaultRenderDevice == null) return;
 
-            try
+            lock (_sessionLock)
             {
-                // Master volume
-                _defaultRenderDevice.AudioEndpointVolume.MasterVolumeLevelScalar = MasterMuted ? 0.0f : MasterVolume;
-                _defaultRenderDevice.AudioEndpointVolume.Mute = MasterMuted;
-
-                if (_defaultCaptureDevice != null)
+                try
                 {
-                    _defaultCaptureDevice.AudioEndpointVolume.MasterVolumeLevelScalar = MicVolume;
-                    _defaultCaptureDevice.AudioEndpointVolume.Mute = MicMuted;
+                    _defaultRenderDevice.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(MasterVolume, 0f, 1f);
+                    _defaultRenderDevice.AudioEndpointVolume.Mute = MasterMuted;
+
+                    // Sonar-identical ChatMix attenuation curve:
+                    // Balance in [-1.0 (Full Game), +1.0 (Full Chat)]
+                    float gameAtten = ChatMixBalance <= 0f ? 1.0f : Math.Clamp(1.0f - ChatMixBalance, 0f, 1f);
+                    float chatAtten = ChatMixBalance >= 0f ? 1.0f : Math.Clamp(1.0f + ChatMixBalance, 0f, 1f);
+
+                    float effectiveGameVol = GameMuted ? 0f : Math.Clamp(GameVolume * gameAtten, 0f, 1f);
+                    float effectiveChatVol = ChatMuted ? 0f : Math.Clamp(ChatVolume * chatAtten, 0f, 1f);
+
+                    var sessions = _defaultRenderDevice.AudioSessionManager.Sessions;
+                    for (int i = 0; i < sessions.Count; i++)
+                    {
+                        var s = sessions[i];
+                        int pid = (int)s.GetProcessID;
+                        if (pid == 0 || s.IsSystemSoundsSession) continue;
+
+                        var model = ActiveSessions.FirstOrDefault(a => a.ProcessId == pid);
+                        if (model == null)
+                        {
+                            try
+                            {
+                                using var proc = Process.GetProcessById(pid);
+                                model = ActiveSessions.FirstOrDefault(a => a.ProcessName.Equals(proc.ProcessName, StringComparison.OrdinalIgnoreCase));
+                            }
+                            catch { }
+                        }
+
+                        if (model != null)
+                        {
+                            if (model.Channel == AppChannel.Chat)
+                            {
+                                s.SimpleAudioVolume.Volume = effectiveChatVol;
+                                s.SimpleAudioVolume.Mute = ChatMuted || MasterMuted;
+                            }
+                            else if (model.Channel == AppChannel.Game)
+                            {
+                                s.SimpleAudioVolume.Volume = effectiveGameVol;
+                                s.SimpleAudioVolume.Mute = GameMuted || MasterMuted;
+                            }
+                        }
+                    }
                 }
-
-                // Compute ChatMix scalars
-                // Balance C in [-1.0, +1.0]
-                float mGame = Math.Min(1.0f, 1.0f - ChatMixBalance);
-                float mChat = Math.Min(1.0f, 1.0f + ChatMixBalance);
-
-                var mgr = _defaultRenderDevice.AudioSessionManager;
-                if (mgr == null) return;
-
-                var sessions = mgr.Sessions;
-                for (int i = 0; i < sessions.Count; i++)
-                {
-                    var session = sessions[i];
-                    int pid = (int)session.GetProcessID;
-                    var app = ActiveSessions.FirstOrDefault(s => s.ProcessId == pid);
-                    if (app == null) continue;
-
-                    float targetVolume;
-                    bool targetMute;
-
-                    if (app.Channel == AppChannel.Chat)
-                    {
-                        targetVolume = ChatVolume * mChat;
-                        targetMute = ChatMuted || MasterMuted;
-                    }
-                    else if (app.Channel == AppChannel.Game)
-                    {
-                        targetVolume = GameVolume * mGame;
-                        targetMute = GameMuted || MasterMuted;
-                    }
-                    else // Master: unrouted, only the master level applies
-                    {
-                        targetVolume = 1.0f;
-                        targetMute = MasterMuted;
-                    }
-
-                    session.SimpleAudioVolume.Volume = Math.Clamp(targetVolume, 0.0f, 1.0f);
-                    session.SimpleAudioVolume.Mute = targetMute;
-                    app.Volume = session.SimpleAudioVolume.Volume;
-                    app.IsMuted = session.SimpleAudioVolume.Mute;
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Failed to apply volumes: {ex.Message}");
+                catch { }
             }
         }
 
         private void PeakTimer_Tick(object? sender, EventArgs e)
         {
-            try
+            lock (_sessionLock)
             {
-                if (_defaultRenderDevice != null)
+                try
                 {
-                    MasterPeak = _defaultRenderDevice.AudioMeterInformation.MasterPeakValue;
-                }
-
-                if (_defaultCaptureDevice != null)
-                {
-                    MicPeak = _defaultCaptureDevice.AudioMeterInformation.MasterPeakValue;
-                }
-
-                // Channel peak tracking
-                float maxGamePeak = 0.0f;
-                float maxChatPeak = 0.0f;
-
-                if (_defaultRenderDevice?.AudioSessionManager != null)
-                {
-                    var sessions = _defaultRenderDevice.AudioSessionManager.Sessions;
-                    for (int i = 0; i < sessions.Count; i++)
+                    if (_defaultRenderDevice != null)
                     {
-                        var session = sessions[i];
-                        int pid = (int)session.GetProcessID;
-                        var app = ActiveSessions.FirstOrDefault(s => s.ProcessId == pid);
-                        if (app != null)
-                        {
-                            float peak = session.AudioMeterInformation.MasterPeakValue;
-                            app.PeakValue = peak;
+                        MasterPeak = _defaultRenderDevice.AudioMeterInformation.MasterPeakValue;
 
-                            if (app.Channel == AppChannel.Chat)
+                        float maxGamePeak = 0f;
+                        float maxChatPeak = 0f;
+
+                        var sessions = _defaultRenderDevice.AudioSessionManager.Sessions;
+                        for (int i = 0; i < sessions.Count; i++)
+                        {
+                            var s = sessions[i];
+                            int pid = (int)s.GetProcessID;
+                            if (pid == 0 || s.IsSystemSoundsSession) continue;
+
+                            float peak = s.AudioMeterInformation.MasterPeakValue;
+                            var app = ActiveSessions.FirstOrDefault(a => a.ProcessId == pid);
+                            if (app != null)
                             {
-                                if (peak > maxChatPeak) maxChatPeak = peak;
-                            }
-                            else
-                            {
-                                if (peak > maxGamePeak) maxGamePeak = peak;
+                                app.PeakValue = peak;
+                                if (app.Channel == AppChannel.Chat)
+                                {
+                                    if (peak > maxChatPeak) maxChatPeak = peak;
+                                }
+                                else if (app.Channel == AppChannel.Game)
+                                {
+                                    if (peak > maxGamePeak) maxGamePeak = peak;
+                                }
                             }
                         }
+
+                        GamePeak = maxGamePeak;
+                        ChatPeak = maxChatPeak;
+                    }
+
+                    if (_defaultCaptureDevice != null)
+                    {
+                        MicPeak = _defaultCaptureDevice.AudioMeterInformation.MasterPeakValue;
                     }
                 }
-
-                GamePeak = maxGamePeak;
-                ChatPeak = maxChatPeak;
+                catch { }
             }
-            catch { }
         }
 
         public void Dispose()
         {
             _peakTimer?.Stop();
-            _deviceEnumerator.Dispose();
+            _sessionRefreshTimer?.Stop();
+            _defaultRenderDevice?.Dispose();
+            _defaultCaptureDevice?.Dispose();
+            _enumerator?.Dispose();
         }
     }
 }

@@ -25,7 +25,14 @@ namespace NovaSonics.Models
         [ObservableProperty]
         private int _priorityOrder;
 
-        public bool IsNovaHeadset => Name.Contains("Nova 7", System.StringComparison.OrdinalIgnoreCase) ||
-                                     Description.Contains("Nova 7", System.StringComparison.OrdinalIgnoreCase);
+        [ObservableProperty]
+        private bool _isNextDevice;
+
+        [ObservableProperty]
+        private bool _isPreviousDevice;
+
+        public bool IsNovaHeadset => (Name.Contains("Nova 7", System.StringComparison.OrdinalIgnoreCase) ||
+                                      Description.Contains("Nova 7", System.StringComparison.OrdinalIgnoreCase)) &&
+                                     !Name.Contains("SteelSeries Sonar", System.StringComparison.OrdinalIgnoreCase);
     }
 }

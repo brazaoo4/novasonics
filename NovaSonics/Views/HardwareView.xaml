@@ -41,7 +41,7 @@
             <!-- 2. Arctis Nova 7 Hardware Controls -->
             <Border Background="#1C1F26" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
                 <StackPanel>
-                    <TextBlock Text="🎛️ Headset Hardware Controls (USB HID)" FontSize="14" FontWeight="Bold" Foreground="#00E5FF"/>
+                    <TextBlock Text="🎛️ Headset Hardware Controls (USB HID + Flash Save 0x09)" FontSize="14" FontWeight="Bold" Foreground="#00E5FF"/>
                     <TextBlock Text="These commands configure internal Nova 7 non-volatile EEPROM registers directly over USB HID."
                                FontSize="12" Foreground="#94A3B8" Margin="0,4,0,16"/>
 
@@ -51,7 +51,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- Sidetone -->
+                        <!-- Sidetone (0x39) -->
                         <TextBlock Grid.Column="0" Text="Sidetone (Mic Monitoring):" Foreground="#E2E8F0" VerticalAlignment="Center" FontSize="12"/>
                         <ComboBox Grid.Column="1" SelectedIndex="{Binding SidetoneLevel, Mode=TwoWay}" Width="200" HorizontalAlignment="Left">
                             <ComboBoxItem Content="0 - Off" />
@@ -67,7 +67,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- Inactive Sleep Timer -->
+                        <!-- Inactive Sleep Timer (0xA3) -->
                         <TextBlock Grid.Column="0" Text="Inactive Sleep Timer:" Foreground="#E2E8F0" VerticalAlignment="Center" FontSize="12"/>
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
                             <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding InactiveTimerMinutes, Mode=TwoWay}" Width="200">
@@ -86,7 +86,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- Mic Muted LED Brightness -->
+                        <!-- Mic Muted LED Brightness (0xAE) -->
                         <TextBlock Grid.Column="0" Text="Muted Mic LED Brightness:" Foreground="#E2E8F0" VerticalAlignment="Center" FontSize="12"/>
                         <ComboBox Grid.Column="1" SelectedIndex="{Binding MicMuteBrightness, Mode=TwoWay}" Width="200" HorizontalAlignment="Left">
                             <ComboBoxItem Content="0 - Off" />
@@ -94,6 +94,33 @@
                             <ComboBoxItem Content="2 - Medium" />
                             <ComboBoxItem Content="3 - High" />
                         </ComboBox>
+                    </Grid>
+
+                    <Grid Margin="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="200" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Hardware Mic Gain (0x37) -->
+                        <TextBlock Grid.Column="0" Text="On-Headset Mic Gain (0-7):" Foreground="#E2E8F0" VerticalAlignment="Center" FontSize="12"/>
+                        <Slider Grid.Column="1" Minimum="0" Maximum="7" Value="{Binding HardwareMicVolume, Mode=TwoWay}"
+                                TickPlacement="BottomRight" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{Binding HardwareMicVolume, StringFormat='{}Level {0} / 7'}"
+                                   Foreground="#00E5FF" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
+                    </Grid>
+
+                    <Grid Margin="0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- EU Volume Limiter (0x3A) -->
+                        <TextBlock Grid.Column="0" Text="Volume Limiter (99 dB Max):" Foreground="#E2E8F0" VerticalAlignment="Center" FontSize="12"/>
+                        <CheckBox Grid.Column="1" Content="Enable EU Volume Limiter (uncheck for 105 dB max output)"
+                                  IsChecked="{Binding VolumeLimiterEnabled, Mode=TwoWay}" VerticalAlignment="Center"/>
                     </Grid>
                 </StackPanel>
             </Border>

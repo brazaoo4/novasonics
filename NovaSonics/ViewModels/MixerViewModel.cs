@@ -14,6 +14,9 @@ namespace NovaSonics.ViewModels
         private readonly IConfigService _configService;
 
         [ObservableProperty]
+        private string _activeEndpointName = "Default Endpoint";
+
+        [ObservableProperty]
         private float _masterVolume;
 
         [ObservableProperty]

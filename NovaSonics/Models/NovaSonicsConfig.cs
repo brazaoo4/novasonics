@@ -18,9 +18,11 @@ namespace NovaSonics.Models
 
         public int BatteryAlertThreshold { get; set; } = 30; // 30% default
 
-        public int SidetoneLevel { get; set; } = 0; // 0=Off, 1=Low, 2=Med, 3=High
+        public int SidetoneLevel { get; set; } = 1; // 0=Off, 1=Low, 2=Med, 3=High
         public int InactiveTimerMinutes { get; set; } = 30; // 0, 5, 15, 30, 60
         public int MicMuteBrightness { get; set; } = 2; // 0=Off, 1=Low, 2=Med, 3=High
+        public int HardwareMicVolume { get; set; } = 7; // 0..7 hardware mic level
+        public bool VolumeLimiterEnabled { get; set; } = true; // 0=105dB max, 1=99dB max
 
         public bool AutoSwitchEnabled { get; set; } = true;
         public bool AutoSwitchAtBoot { get; set; } = true;

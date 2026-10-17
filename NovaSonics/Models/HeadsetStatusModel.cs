@@ -26,13 +26,19 @@ namespace NovaSonics.Models
         private float _balance = 0.0f; // -1.0 (Game) to +1.0 (Chat)
 
         [ObservableProperty]
-        private int _sidetoneLevel = 0; // 0=Off, 1=Low, 2=Med, 3=High
+        private int _sidetoneLevel = 1; // 0=Off, 1=Low, 2=Med, 3=High
 
         [ObservableProperty]
         private int _inactiveTimerMinutes = 30; // 0, 5, 15, 30, 60
 
         [ObservableProperty]
         private int _micMuteBrightness = 2; // 0=Off, 1=Low, 2=Med, 3=High
+
+        [ObservableProperty]
+        private int _micVolumeLevel = 7; // 0..7 on-headset hardware mic gain
+
+        [ObservableProperty]
+        private bool _volumeLimiterEnabled = true; // 0=105dB max, 1=99dB max
 
         [ObservableProperty]
         private bool _lowBatteryAlertFired;

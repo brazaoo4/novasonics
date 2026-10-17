@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Win32;
 
 namespace NovaSonics.Services
@@ -18,7 +19,7 @@ namespace NovaSonics.Services
                 if (enabled)
                 {
                     string? exe = Environment.ProcessPath;
-                    if (!string.IsNullOrEmpty(exe)) key.SetValue(ValueName, $"\"{exe}\"");
+                    if (!string.IsNullOrEmpty(exe)) key.SetValue(ValueName, $"\"{exe}\" --minimized");
                 }
                 else
                 {

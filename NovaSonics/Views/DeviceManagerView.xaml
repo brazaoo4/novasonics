@@ -21,13 +21,27 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,16">
-            <TextBlock Text="Device Manager (Backup Device Switch)" FontSize="20" FontWeight="Bold" Foreground="#F8FAFC"/>
-            <TextBlock Text="Drag or arrange playback devices in priority order. When your Arctis Nova 7 powers on or off, NovaSonics switches audio immediately." FontSize="12" Foreground="#94A3B8" Margin="0,4,0,0"/>
-        </StackPanel>
+        <!-- Header + Backup Device Switch (Manual / Auto) Toggle -->
+        <Grid Grid.Row="0" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-        <!-- Two Columns: Priority List vs Excluded Devices -->
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="Device Manager (Backup Device Switch)" FontSize="20" FontWeight="Bold" Foreground="#F8FAFC"/>
+                <TextBlock Text="Drag or arrange playback devices in priority order. When your Arctis Nova 7 powers on or off, NovaSonics switches audio immediately." FontSize="12" Foreground="#94A3B8" Margin="0,4,0,0"/>
+            </StackPanel>
+
+            <Border Grid.Column="1" Background="#1C1F26" CornerRadius="8" Padding="14,8" BorderBrush="#262A34" BorderThickness="1" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="BACKUP DEVICE SWITCH:" FontWeight="Bold" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <CheckBox Content="Auto (Priority Fallback)" IsChecked="{Binding AutoSwitchEnabled, Mode=TwoWay}" FontWeight="SemiBold" Foreground="#00E5FF" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Two Columns: Priority List vs Excluded Devices + Shortcuts -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="3*" />
@@ -35,7 +49,8 @@
             </Grid.ColumnDefinitions>
 
             <!-- 1. Priority List -->
-            <Border Grid.Column="0" Background="#1C1F26" CornerRadius="8" Padding="16" Margin="0,0,10,0" BorderBrush="#262A34" BorderThickness="1">
+            <Border Grid.Column="0" Background="#1C1F26" CornerRadius="8" Padding="16" Margin="0,0,10,0" BorderBrush="#262A34" BorderThickness="1"
+                    AllowDrop="True" Drop="PriorityPanel_Drop">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -48,7 +63,8 @@
                         <ItemsControl ItemsSource="{Binding PriorityDevices}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Background="#16181F" CornerRadius="6" Padding="12,10" Margin="0,4" BorderBrush="#2D3340" BorderThickness="1">
+                                    <Border Background="#16181F" CornerRadius="6" Padding="12,10" Margin="0,4" BorderBrush="#2D3340" BorderThickness="1"
+                                            AllowDrop="True" MouseMove="DeviceCard_MouseMove" Drop="PriorityCard_Drop" Cursor="Hand">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
@@ -56,10 +72,10 @@
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
 
-                                            <!-- Order Number -->
+                                            <!-- Drag Handle -->
                                             <TextBlock Text="⠿" FontSize="16" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,10,0"/>
 
-                                            <!-- Device Name & Badge -->
+                                            <!-- Device Name & Badges -->
                                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                 <StackPanel Orientation="Horizontal">
                                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="#F1F5F9" FontSize="13"/>
@@ -67,6 +83,16 @@
                                                     <Border Background="#065F46" CornerRadius="4" Padding="6,1" Margin="8,0,0,0"
                                                             Visibility="{Binding IsDefault, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                         <TextBlock Text="🟢 CURRENT DEVICE" FontSize="10" FontWeight="Bold" Foreground="#34D399"/>
+                                                    </Border>
+                                                    <!-- Next Device Badge -->
+                                                    <Border Background="#1E3A8A" CornerRadius="4" Padding="6,1" Margin="6,0,0,0"
+                                                            Visibility="{Binding IsNextDevice, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <TextBlock Text="⏭️ NEXT DEVICE" FontSize="10" FontWeight="Bold" Foreground="#60A5FA"/>
+                                                    </Border>
+                                                    <!-- Previous Device Badge -->
+                                                    <Border Background="#312E81" CornerRadius="4" Padding="6,1" Margin="6,0,0,0"
+                                                            Visibility="{Binding IsPreviousDevice, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                        <TextBlock Text="⏮️ PREVIOUS DEVICE" FontSize="10" FontWeight="Bold" Foreground="#A5B4FC"/>
                                                     </Border>
                                                 </StackPanel>
                                                 <TextBlock Text="{Binding Description}" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
@@ -96,43 +122,73 @@
                 </Grid>
             </Border>
 
-            <!-- 2. Excluded Devices -->
-            <Border Grid.Column="1" Background="#1C1F26" CornerRadius="8" Padding="16" Margin="10,0,0,0" BorderBrush="#262A34" BorderThickness="1">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
+            <!-- 2. Right Column: Shortcuts + Excluded Devices -->
+            <Grid Grid.Column="1" Margin="10,0,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="EXCLUDED DEVICES" FontWeight="Bold" FontSize="13" Foreground="#94A3B8" Margin="0,0,0,12"/>
+                <!-- Shortcuts Panel -->
+                <Border Grid.Row="0" Background="#1C1F26" CornerRadius="8" Padding="14" Margin="0,0,0,12" BorderBrush="#262A34" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="SHORTCUTS &amp; QUICK SWITCH" FontWeight="Bold" FontSize="13" Foreground="#00E5FF" Margin="0,0,0,8"/>
+                        <Grid Margin="0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Previous / Next Playback Device:" FontSize="11" Foreground="#CBD5E1" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button Content="⏮️ Prev (Ctrl+Alt+Up)" FontSize="10" Padding="6,3" Margin="0,0,4,0" Command="{Binding SwitchPreviousDeviceCommand}"/>
+                                <Button Content="⏭️ Next (Ctrl+Alt+Down)" FontSize="10" Padding="6,3" Command="{Binding SwitchNextDeviceCommand}"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="Volume &amp; Mute Hotkeys: Ctrl+Alt+Plus (Vol+), Ctrl+Alt+Minus (Vol-), Ctrl+Alt+M (Mute)"
+                                   FontSize="10" Foreground="#64748B" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
 
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding ExcludedDevices}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="#16181F" CornerRadius="6" Padding="12,10" Margin="0,4" BorderBrush="#262B36" BorderThickness="1">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
+                <!-- Excluded Devices Drop Zone -->
+                <Border Grid.Row="1" Background="#1C1F26" CornerRadius="8" Padding="16" BorderBrush="#262A34" BorderThickness="1"
+                        AllowDrop="True" Drop="ExcludedPanel_Drop">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
 
-                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="#94A3B8" FontSize="12"/>
-                                                <TextBlock Text="{Binding Description}" FontSize="10" Foreground="#475569" Margin="0,2,0,0"/>
-                                            </StackPanel>
+                        <TextBlock Grid.Row="0" Text="EXCLUDED DEVICES (Drop Here to Exclude)" FontWeight="Bold" FontSize="13" Foreground="#94A3B8" Margin="0,0,0,12"/>
 
-                                            <Button Grid.Column="1" Content="↺ Include" FontSize="11" Padding="8,3" Background="#1E293B" BorderBrush="#334155"
-                                                    Command="{Binding DataContext.RestoreDeviceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}" />
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </Grid>
-            </Border>
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding ExcludedDevices}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#16181F" CornerRadius="6" Padding="12,10" Margin="0,4" BorderBrush="#262B36" BorderThickness="1"
+                                                MouseMove="DeviceCard_MouseMove" Cursor="Hand">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="#94A3B8" FontSize="12"/>
+                                                    <TextBlock Text="{Binding Description}" FontSize="10" Foreground="#475569" Margin="0,2,0,0"/>
+                                                </StackPanel>
+
+                                                <Button Grid.Column="1" Content="↺ Include" FontSize="11" Padding="8,3" Background="#1E293B" BorderBrush="#334155"
+                                                        Command="{Binding DataContext.RestoreDeviceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
         </Grid>
 
         <!-- Bottom Policy Toggles -->

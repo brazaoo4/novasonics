@@ -14,7 +14,9 @@ namespace NovaSonics.Services
         void RefreshDevices();
         bool SwitchToDevice(string deviceId);
         bool SwitchToDeviceByName(string nameSubstring);
+        bool SwitchNextDevice();
+        bool SwitchPreviousDevice();
         void HandleHeadsetPowerStateChanged(bool isOnline);
-        void EnforcePriorityDevice();
+        void EnforcePriorityDevice(bool isHeadsetOnline = false);
     }
 }

@@ -90,6 +90,7 @@
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,10">
                         <TextBlock Text="🔊 MASTER" FontWeight="Bold" FontSize="15" Foreground="#F8FAFC" />
+                        <TextBlock Text="{Binding ActiveEndpointName, StringFormat='{}🔗 {0}'}" FontSize="10" Foreground="#64748B" TextTrimming="CharacterEllipsis" Margin="0,2,0,2"/>
                         <TextBlock Text="{Binding MasterVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
                     </StackPanel>
 
@@ -131,7 +132,8 @@
                                 <ItemsControl ItemsSource="{Binding MasterSessions}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Border Background="#1E222B" CornerRadius="6" Padding="6,4" Margin="0,2" BorderBrush="#2D3340" BorderThickness="1">
+                                            <Border Background="#1E222B" CornerRadius="6" Padding="6,4" Margin="0,2" BorderBrush="#2D3340" BorderThickness="1"
+                                                    MouseMove="AppPill_MouseMove">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="Auto" />
@@ -169,6 +171,7 @@
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,10">
                         <TextBlock Text="🎮 GAME" FontWeight="Bold" FontSize="15" Foreground="#00E5FF" />
+                        <TextBlock Text="{Binding ActiveEndpointName, StringFormat='{}🔗 {0}'}" FontSize="10" Foreground="#64748B" TextTrimming="CharacterEllipsis" Margin="0,2,0,2"/>
                         <TextBlock Text="{Binding GameVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
                     </StackPanel>
 
@@ -243,6 +246,7 @@
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,10">
                         <TextBlock Text="💬 CHAT" FontWeight="Bold" FontSize="15" Foreground="#A78BFA" />
+                        <TextBlock Text="{Binding ActiveEndpointName, StringFormat='{}🔗 {0}'}" FontSize="10" Foreground="#64748B" TextTrimming="CharacterEllipsis" Margin="0,2,0,2"/>
                         <TextBlock Text="{Binding ChatVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
                     </StackPanel>
 
@@ -317,6 +321,7 @@
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,10">
                         <TextBlock Text="🎤 MIC" FontWeight="Bold" FontSize="15" Foreground="#10B981" />
+                        <TextBlock Text="🔗 Default Capture Endpoint" FontSize="10" Foreground="#64748B" TextTrimming="CharacterEllipsis" Margin="0,2,0,2"/>
                         <TextBlock Text="{Binding MicVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
                     </StackPanel>
 

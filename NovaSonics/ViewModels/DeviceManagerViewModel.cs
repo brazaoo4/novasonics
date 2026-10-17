@@ -90,10 +90,27 @@ namespace NovaSonics.ViewModels
             }
         }
 
+        public void ReorderPriorityDevice(AudioDeviceModel source, AudioDeviceModel target)
+        {
+            if (source == null || target == null || source == target) return;
+            if (source.IsExcluded)
+            {
+                RestoreDevice(source);
+            }
+            int oldIndex = PriorityDevices.IndexOf(source);
+            int newIndex = PriorityDevices.IndexOf(target);
+            if (oldIndex >= 0 && newIndex >= 0 && oldIndex != newIndex)
+            {
+                PriorityDevices.Move(oldIndex, newIndex);
+                SavePriorityList();
+                RefreshLists();
+            }
+        }
+
         [RelayCommand]
         public void ExcludeDevice(AudioDeviceModel device)
         {
-            if (device == null) return;
+            if (device == null || device.IsExcluded) return;
             device.IsExcluded = true;
             PriorityDevices.Remove(device);
             ExcludedDevices.Add(device);
@@ -103,18 +120,20 @@ namespace NovaSonics.ViewModels
                 _configService.Config.ExcludedDevices.Add(device.Name);
             }
             SavePriorityList();
+            RefreshLists();
         }
 
         [RelayCommand]
         public void RestoreDevice(AudioDeviceModel device)
         {
-            if (device == null) return;
+            if (device == null || !device.IsExcluded) return;
             device.IsExcluded = false;
             ExcludedDevices.Remove(device);
             PriorityDevices.Add(device);
 
             _configService.Config.ExcludedDevices.Remove(device.Name);
             SavePriorityList();
+            RefreshLists();
         }
 
         [RelayCommand]
@@ -122,6 +141,20 @@ namespace NovaSonics.ViewModels
         {
             if (device == null) return;
             _deviceService.SwitchToDevice(device.Id);
+            RefreshLists();
+        }
+
+        [RelayCommand]
+        public void SwitchNextDevice()
+        {
+            _deviceService.SwitchNextDevice();
+            RefreshLists();
+        }
+
+        [RelayCommand]
+        public void SwitchPreviousDevice()
+        {
+            _deviceService.SwitchPreviousDevice();
             RefreshLists();
         }
 
