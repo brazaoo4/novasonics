@@ -38,6 +38,7 @@ namespace NovaSonics.Services
         private int _activePid;
         private CancellationTokenSource? _cts;
         private readonly object _ioLock = new();
+        private float _previousBalance = float.NaN;
 
         public HeadsetStatusModel Status { get; } = new();
 
@@ -157,7 +158,6 @@ namespace NovaSonics.Services
         private void PollingLoop(CancellationToken token)
         {
             bool? previousOnline = null;
-            float previousBalance = float.NaN;
 
             while (!token.IsCancellationRequested)
             {
@@ -207,13 +207,20 @@ namespace NovaSonics.Services
                         Status.ChatAttenuation = c;
 
                         // Calculate balance: -1.0 (Full Game) to +1.0 (Full Chat), 0.0 = Center
-                        float balance = (c - g) / 100.0f;
-                        balance = Math.Clamp(balance, -1.0f, 1.0f);
+                        float rawBalance = (c - g) / 100.0f;
+                        rawBalance = Math.Clamp(rawBalance, -1.0f, 1.0f);
+
+                        // Center detent deadzone snap: when dial is within 5% of center (or both >= 95), snap strictly to 0.0f
+                        float balance = (Math.Abs(rawBalance) < 0.05f || (g >= 95 && c >= 95)) ? 0.0f : rawBalance;
                         Status.Balance = balance;
 
-                        if (float.IsNaN(previousBalance) || Math.Abs(balance - previousBalance) > 0.005f)
+                        // Potentiometer deadband: only invoke when change is >= 0.025f (2.5%) or entering/leaving exact center
+                        if (float.IsNaN(_previousBalance) || 
+                            (balance == 0.0f && _previousBalance != 0.0f) || 
+                            (balance != 0.0f && _previousBalance == 0.0f) || 
+                            Math.Abs(balance - _previousBalance) >= 0.025f)
                         {
-                            previousBalance = balance;
+                            _previousBalance = balance;
                             ChatMixChanged?.Invoke(this, balance);
                         }
 
@@ -291,10 +298,20 @@ namespace NovaSonics.Services
                             Status.GameAttenuation = g;
                             Status.ChatAttenuation = c;
 
-                            float balance = Math.Clamp((c - g) / 100.0f, -1.0f, 1.0f);
+                            float rawBalance = (c - g) / 100.0f;
+                            rawBalance = Math.Clamp(rawBalance, -1.0f, 1.0f);
+                            float balance = (Math.Abs(rawBalance) < 0.05f || (g >= 95 && c >= 95)) ? 0.0f : rawBalance;
                             Status.Balance = balance;
-                            ChatMixChanged?.Invoke(this, balance);
-                            StatusUpdated?.Invoke(this, Status);
+
+                            if (float.IsNaN(_previousBalance) || 
+                                (balance == 0.0f && _previousBalance != 0.0f) || 
+                                (balance != 0.0f && _previousBalance == 0.0f) || 
+                                Math.Abs(balance - _previousBalance) >= 0.025f)
+                            {
+                                _previousBalance = balance;
+                                ChatMixChanged?.Invoke(this, balance);
+                                StatusUpdated?.Invoke(this, Status);
+                            }
                         }
                         else if (cmd == 0xB7) // Battery event: [ReportID, 0xB7, Battery]
                         {
@@ -433,69 +450,16 @@ namespace NovaSonics.Services
                 {
                     if (_commandStream == null) return;
 
-                    if (LegacyBatteryScalePids.Contains(_activePid))
-                    {
-                        byte[] args = new byte[10];
-                        for (int i = 0; i < 10; i++)
-                        {
-                            float clamped = Math.Clamp(bands[i], -10.0f, 10.0f);
-                            args[i] = (byte)Math.Clamp((int)Math.Round(2 * (10.0f + clamped)), 0, 40);
-                        }
-                        SendWriteAndSaveToFlash(0x33, args);
-                        return;
-                    }
-
-                    // Gen 2 / Upgrade PEQ sequence:
-                    // Packet 1: 0xA7 Custom preset name
-                    byte[] namePkt = new byte[65];
-                    namePkt[0] = 0x00;
-                    namePkt[1] = 0xA7;
-                    namePkt[2] = 0x00; // 2.4G connection
-                    namePkt[3] = 0x01; // Custom preset
-                    byte[] nameBytes = System.Text.Encoding.ASCII.GetBytes("Custom\0");
-                    Array.Copy(nameBytes, 0, namePkt, 4, Math.Min(nameBytes.Length, 61));
-                    _commandStream.Write(namePkt, 0, namePkt.Length);
-                    Thread.Sleep(30);
-
-                    // Packet 2: 0x33 PEQ 10 bands (60 bytes payload)
-                    byte[] bandPkt = new byte[65];
-                    bandPkt[0] = 0x00;
-                    bandPkt[1] = 0x33;
-                    bandPkt[2] = 0x00; // 2.4G connection
-
-                    ushort[] freqs = { 32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
+                    // SteelSeries Arctis Nova 7 hardware 10-band Graphic EQ:
+                    // 10 bands: 31Hz, 62Hz, 125Hz, 250Hz, 500Hz, 1kHz, 2kHz, 4kHz, 8kHz, 16kHz
+                    // Scale: -10 dB to +10 dB mapped to 0..40 (0x00..0x28), with 0 dB = 20 (0x14)
+                    byte[] args = new byte[10];
                     for (int i = 0; i < 10; i++)
                     {
-                        int offset = 3 + (i * 6);
-                        ushort f = freqs[i];
-                        byte filterType = 1; // Peaking EQ
-                        float clampedDb = Math.Clamp(bands[i], -12.0f, 12.0f);
-                        sbyte gainByte = (sbyte)Math.Clamp((int)Math.Round(clampedDb * 10f), -120, 120);
-                        ushort qFactor = 1414; // 1.414 * 1000
-
-                        bandPkt[offset] = (byte)(f & 0xFF);
-                        bandPkt[offset + 1] = (byte)((f >> 8) & 0xFF);
-                        bandPkt[offset + 2] = filterType;
-                        bandPkt[offset + 3] = (byte)gainByte;
-                        bandPkt[offset + 4] = (byte)(qFactor & 0xFF);
-                        bandPkt[offset + 5] = (byte)((qFactor >> 8) & 0xFF);
+                        float clamped = Math.Clamp(bands[i], -10.0f, 10.0f);
+                        args[i] = (byte)Math.Clamp((int)Math.Round(2 * (10.0f + clamped)), 0, 40);
                     }
-                    _commandStream.Write(bandPkt, 0, bandPkt.Length);
-                    Thread.Sleep(30);
-
-                    // Packet 3: 0x27 update_complete trigger (DSP reconfiguration)
-                    byte[] updatePkt = new byte[65];
-                    updatePkt[0] = 0x00;
-                    updatePkt[1] = 0x27;
-                    _commandStream.Write(updatePkt, 0, updatePkt.Length);
-                    Thread.Sleep(30);
-
-                    // Packet 4: 0x09 save_to_flash commit
-                    byte[] savePkt = new byte[65];
-                    savePkt[0] = 0x00;
-                    savePkt[1] = 0x09;
-                    _commandStream.Write(savePkt, 0, savePkt.Length);
-                    Thread.Sleep(500);
+                    SendWriteAndSaveToFlash(0x33, args);
                 }
             });
         }

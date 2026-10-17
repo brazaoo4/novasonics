@@ -11,6 +11,7 @@ namespace NovaSonics.Services
     public class DeviceSwitchService : IDeviceSwitchService
     {
         private readonly IConfigService _configService;
+        private readonly INotificationService? _notificationService;
         private readonly MMDeviceEnumerator _enumerator;
         private bool _lastKnownHeadsetOnline;
 
@@ -19,9 +20,10 @@ namespace NovaSonics.Services
 
         public event EventHandler<AudioDeviceModel>? DefaultDeviceChanged;
 
-        public DeviceSwitchService(IConfigService configService)
+        public DeviceSwitchService(IConfigService configService, INotificationService? notificationService = null)
         {
             _configService = configService;
+            _notificationService = notificationService;
             _enumerator = new MMDeviceEnumerator();
             RefreshDevices();
         }
@@ -180,6 +182,27 @@ namespace NovaSonics.Services
                         }
                     }
                 }
+                else
+                {
+                    // Fallback to active non-Nova microphone when switching away from Nova
+                    var captureEndpoints = _enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+                    foreach (var cap in captureEndpoints)
+                    {
+                        try
+                        {
+                            if (!cap.FriendlyName.Contains("Nova 7", StringComparison.OrdinalIgnoreCase) &&
+                                !cap.FriendlyName.Contains("SteelSeries Sonar", StringComparison.OrdinalIgnoreCase))
+                            {
+                                SetDefaultEndpointForAllRoles(cap.ID);
+                                break;
+                            }
+                        }
+                        finally
+                        {
+                            cap.Dispose();
+                        }
+                    }
+                }
             }
             catch { }
         }
@@ -228,11 +251,28 @@ namespace NovaSonics.Services
 
             if (isOnline)
             {
-                // Headset just powered ON -> switch to Arctis Nova 7 if it's in the priority list and not excluded
+                // Headset just powered ON -> switch to Arctis Nova 7 if active and not excluded
                 var novaDevice = PlaybackDevices.FirstOrDefault(d => d.IsNovaHeadset && !d.IsExcluded && d.IsActive);
-                if (novaDevice != null && !novaDevice.IsDefault)
+                if (novaDevice != null)
                 {
-                    SwitchToDevice(novaDevice.Id);
+                    if (!novaDevice.IsDefault)
+                    {
+                        SwitchToDevice(novaDevice.Id);
+                    }
+                    else
+                    {
+                        if (_configService.Config.UseSameDeviceOnAllChannels)
+                        {
+                            TrySyncCaptureDevice(novaDevice.Id);
+                        }
+                        RefreshDevices();
+                        if (CurrentDefaultDevice != null)
+                        {
+                            DefaultDeviceChanged?.Invoke(this, CurrentDefaultDevice);
+                        }
+                    }
+
+                    _notificationService?.ShowCustomToast("Headset Connected", "Arctis Nova 7 is online. Audio routed to headset.");
                 }
             }
             else if (_configService.Config.AutoSwitchOnPowerOff || _configService.Config.AutoSwitchAtBoot)
@@ -243,9 +283,26 @@ namespace NovaSonics.Services
                     .OrderBy(d => d.PriorityOrder)
                     .FirstOrDefault();
 
-                if (fallback != null && !fallback.IsDefault)
+                if (fallback != null)
                 {
-                    SwitchToDevice(fallback.Id);
+                    if (!fallback.IsDefault)
+                    {
+                        SwitchToDevice(fallback.Id);
+                    }
+                    else
+                    {
+                        if (_configService.Config.UseSameDeviceOnAllChannels)
+                        {
+                            TrySyncCaptureDevice(fallback.Id);
+                        }
+                        RefreshDevices();
+                        if (CurrentDefaultDevice != null)
+                        {
+                            DefaultDeviceChanged?.Invoke(this, CurrentDefaultDevice);
+                        }
+                    }
+
+                    _notificationService?.ShowCustomToast("Headset Offline", $"Arctis Nova 7 powered off. Audio routed to {fallback.Name}.");
                 }
             }
         }

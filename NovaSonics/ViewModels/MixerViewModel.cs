@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NovaSonics.Models;
@@ -71,10 +72,22 @@ namespace NovaSonics.ViewModels
         public ObservableCollection<AppSessionModel> MediaSessions { get; } = new();
         public ObservableCollection<AppSessionModel> ChatSessions { get; } = new();
 
+        private readonly DispatcherTimer _saveDebounceTimer;
+
         public MixerViewModel(IAudioMixerService mixerService, IConfigService configService)
         {
             _mixerService = mixerService;
             _configService = configService;
+
+            _saveDebounceTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1)
+            };
+            _saveDebounceTimer.Tick += (s, e) =>
+            {
+                _saveDebounceTimer.Stop();
+                _configService.Save();
+            };
 
             var cfg = _configService.Config;
             _masterVolume = cfg.MasterVolume;
@@ -123,81 +136,92 @@ namespace NovaSonics.ViewModels
             MicPeak = _mixerService.MicPeak;
         }
 
+        private void QueueSave()
+        {
+            if (App.Current?.Dispatcher?.CheckAccess() == false)
+            {
+                App.Current.Dispatcher.Invoke(QueueSave);
+                return;
+            }
+            _saveDebounceTimer.Stop();
+            _saveDebounceTimer.Start();
+        }
+
         partial void OnMasterVolumeChanged(float value)
         {
             _mixerService.MasterVolume = value;
             _configService.Config.MasterVolume = value;
-            _configService.Save();
+            QueueSave();
         }
 
         partial void OnGameVolumeChanged(float value)
         {
             _mixerService.GameVolume = value;
             _configService.Config.GameVolume = value;
-            _configService.Save();
+            QueueSave();
         }
 
         partial void OnMediaVolumeChanged(float value)
         {
             _mixerService.MediaVolume = value;
             _configService.Config.MediaVolume = value;
-            _configService.Save();
+            QueueSave();
         }
 
         partial void OnChatVolumeChanged(float value)
         {
             _mixerService.ChatVolume = value;
             _configService.Config.ChatVolume = value;
-            _configService.Save();
+            QueueSave();
         }
 
         partial void OnMicVolumeChanged(float value)
         {
             _mixerService.MicVolume = value;
             _configService.Config.MicVolume = value;
-            _configService.Save();
+            QueueSave();
         }
 
         partial void OnMasterMutedChanged(bool value)
         {
             _mixerService.MasterMuted = value;
             _configService.Config.MasterMuted = value;
-            _configService.Save();
+            QueueSave();
         }
 
         partial void OnGameMutedChanged(bool value)
         {
             _mixerService.GameMuted = value;
             _configService.Config.GameMuted = value;
-            _configService.Save();
+            QueueSave();
         }
 
         partial void OnMediaMutedChanged(bool value)
         {
             _mixerService.MediaMuted = value;
             _configService.Config.MediaMuted = value;
-            _configService.Save();
+            QueueSave();
         }
 
         partial void OnChatMutedChanged(bool value)
         {
             _mixerService.ChatMuted = value;
             _configService.Config.ChatMuted = value;
-            _configService.Save();
+            QueueSave();
         }
 
         partial void OnMicMutedChanged(bool value)
         {
             _mixerService.MicMuted = value;
             _configService.Config.MicMuted = value;
-            _configService.Save();
+            QueueSave();
         }
 
         partial void OnChatMixBalanceChanged(float value)
         {
             _mixerService.ChatMixBalance = value;
             _configService.Config.ChatMixBalance = value;
-            _configService.Save();
+            QueueSave();
         }
 
         [RelayCommand]

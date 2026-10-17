@@ -25,6 +25,7 @@ namespace NovaSonics.Services
         private DispatcherTimer? _peakTimer;
         private DispatcherTimer? _sessionRefreshTimer;
         private readonly object _sessionLock = new();
+        private readonly Dictionary<int, string> _pidToProcessNameCache = new();
 
         private readonly HashSet<string> _defaultChatProcesses = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _defaultMediaProcesses = new(StringComparer.OrdinalIgnoreCase);
@@ -255,14 +256,28 @@ namespace NovaSonics.Services
                         string displayName = s.DisplayName;
                         BitmapSource? icon = null;
 
+                        if (_pidToProcessNameCache.TryGetValue(pid, out string? cachedName))
+                        {
+                            procName = cachedName;
+                        }
+
                         try
                         {
                             using var proc = Process.GetProcessById(pid);
-                            procName = proc.ProcessName;
-                            if (string.IsNullOrWhiteSpace(displayName))
+                            if (string.IsNullOrEmpty(procName))
                             {
-                                displayName = !string.IsNullOrWhiteSpace(proc.MainWindowTitle) ? proc.MainWindowTitle : procName;
+                                procName = proc.ProcessName;
+                                _pidToProcessNameCache[pid] = procName;
                             }
+
+                            try
+                            {
+                                if (string.IsNullOrWhiteSpace(displayName) && !string.IsNullOrWhiteSpace(proc.MainWindowTitle))
+                                {
+                                    displayName = proc.MainWindowTitle;
+                                }
+                            }
+                            catch { }
 
                             try
                             {
@@ -284,10 +299,15 @@ namespace NovaSonics.Services
                         }
                         catch
                         {
-                            continue;
+                            // If Process.GetProcessById failed (e.g. sandboxed child process), use cached name if available
+                            if (string.IsNullOrEmpty(procName) && _pidToProcessNameCache.TryGetValue(pid, out var fallbackName))
+                            {
+                                procName = fallbackName;
+                            }
                         }
 
                         if (string.IsNullOrWhiteSpace(procName)) continue;
+                        if (string.IsNullOrWhiteSpace(displayName)) displayName = procName;
 
                         if (!currentModels.ContainsKey(procName))
                         {
@@ -435,12 +455,22 @@ namespace NovaSonics.Services
                         var modelApp = ActiveSessions.FirstOrDefault(a => a.ProcessId == pid);
                         if (modelApp == null)
                         {
-                            try
+                            string? resolvedProc = null;
+                            if (!_pidToProcessNameCache.TryGetValue(pid, out resolvedProc))
                             {
-                                using var proc = Process.GetProcessById(pid);
-                                modelApp = ActiveSessions.FirstOrDefault(a => a.ProcessName.Equals(proc.ProcessName, StringComparison.OrdinalIgnoreCase));
+                                try
+                                {
+                                    using var proc = Process.GetProcessById(pid);
+                                    resolvedProc = proc.ProcessName;
+                                    _pidToProcessNameCache[pid] = resolvedProc;
+                                }
+                                catch { }
                             }
-                            catch { }
+
+                            if (!string.IsNullOrEmpty(resolvedProc))
+                            {
+                                modelApp = ActiveSessions.FirstOrDefault(a => a.ProcessName.Equals(resolvedProc, StringComparison.OrdinalIgnoreCase));
+                            }
                         }
 
                         if (modelApp != null)
@@ -460,6 +490,17 @@ namespace NovaSonics.Services
                                 s.SimpleAudioVolume.Volume = effectiveGameVol;
                                 s.SimpleAudioVolume.Mute = GameMuted || MasterMuted;
                             }
+                            else
+                            {
+                                s.SimpleAudioVolume.Volume = Math.Clamp(MasterVolume, 0f, 1f);
+                                s.SimpleAudioVolume.Mute = MasterMuted;
+                            }
+                        }
+                        else
+                        {
+                            // Unrecognized audio session defaults to Game channel (per Sonar architecture)
+                            s.SimpleAudioVolume.Volume = effectiveGameVol;
+                            s.SimpleAudioVolume.Mute = GameMuted || MasterMuted;
                         }
                     }
                 }
@@ -542,6 +583,7 @@ namespace NovaSonics.Services
         {
             _peakTimer?.Stop();
             _sessionRefreshTimer?.Stop();
+            _pidToProcessNameCache.Clear();
             _defaultRenderDevice?.Dispose();
             _defaultCaptureDevice?.Dispose();
             _enumerator?.Dispose();

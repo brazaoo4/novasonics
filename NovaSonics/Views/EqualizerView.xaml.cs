@@ -17,7 +17,7 @@ namespace NovaSonics.Views
             if (sender is Slider slider && slider.DataContext is EqualizerBandModel band)
             {
                 float step = e.Delta > 0 ? 0.5f : -0.5f;
-                band.GainDb = Math.Clamp(band.GainDb + step, -12.0f, 12.0f);
+                band.GainDb = Math.Clamp(band.GainDb + step, -10.0f, 10.0f);
                 e.Handled = true;
             }
         }

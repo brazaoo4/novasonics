@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Windows;
 using NovaSonics.Services;
 using NovaSonics.ViewModels;
@@ -8,6 +9,7 @@ namespace NovaSonics
 {
     public partial class App : Application
     {
+        private static Mutex? _singleInstanceMutex;
         private ArctisNova7Device? _headsetService;
         private WasapiSessionMixer? _mixerService;
         private DeviceSwitchService? _deviceService;
@@ -18,6 +20,14 @@ namespace NovaSonics
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+
+            _singleInstanceMutex = new Mutex(true, "NovaSonics_SingleInstance_AppMutex", out bool createdNew);
+            if (!createdNew)
+            {
+                // Another instance is already running; exit cleanly to prevent audio fighting
+                Shutdown();
+                return;
+            }
 
             AppDomain.CurrentDomain.UnhandledException += (s, args) =>
             {
@@ -32,7 +42,7 @@ namespace NovaSonics
             _notificationService = new ToastNotificationService();
             _headsetService = new ArctisNova7Device();
             _mixerService = new WasapiSessionMixer(_configService);
-            _deviceService = new DeviceSwitchService(_configService);
+            _deviceService = new DeviceSwitchService(_configService, _notificationService);
 
             _mixerService.Initialize();
 
