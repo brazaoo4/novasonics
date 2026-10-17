@@ -26,6 +26,9 @@ namespace NovaSonics.Services
         private DispatcherTimer? _sessionRefreshTimer;
         private readonly object _sessionLock = new();
         private readonly Dictionary<int, string> _pidToProcessNameCache = new();
+        private bool _isUpdatingFromInternal;
+
+        public event EventHandler<(float volume, bool isMuted)>? MasterVolumeExternalChanged;
 
         private readonly HashSet<string> _defaultChatProcesses = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _defaultMediaProcesses = new(StringComparer.OrdinalIgnoreCase);
@@ -185,8 +188,14 @@ namespace NovaSonics.Services
             {
                 try
                 {
-                    _defaultRenderDevice?.Dispose();
+                    if (_defaultRenderDevice != null)
+                    {
+                        try { _defaultRenderDevice.AudioEndpointVolume.OnVolumeNotification -= AudioEndpointVolume_OnVolumeNotification; } catch { }
+                        _defaultRenderDevice.Dispose();
+                        _defaultRenderDevice = null;
+                    }
                     _defaultCaptureDevice?.Dispose();
+                    _defaultCaptureDevice = null;
 
                     _defaultRenderDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
                     try
@@ -198,6 +207,17 @@ namespace NovaSonics.Services
                     if (_defaultRenderDevice != null)
                     {
                         _defaultRenderDevice.AudioSessionManager.OnSessionCreated += AudioSessionManager_OnSessionCreated;
+                        _defaultRenderDevice.AudioEndpointVolume.OnVolumeNotification += AudioEndpointVolume_OnVolumeNotification;
+
+                        try
+                        {
+                            float currentVol = _defaultRenderDevice.AudioEndpointVolume.MasterVolumeLevelScalar;
+                            bool currentMute = _defaultRenderDevice.AudioEndpointVolume.Mute;
+                            _masterVolume = currentVol;
+                            _masterMuted = currentMute;
+                            MasterVolumeExternalChanged?.Invoke(this, (currentVol, currentMute));
+                        }
+                        catch { }
                     }
 
                     ApplyCaptureVolume();
@@ -206,6 +226,22 @@ namespace NovaSonics.Services
             }
 
             RefreshSessions();
+        }
+
+        private void AudioEndpointVolume_OnVolumeNotification(AudioVolumeNotificationData data)
+        {
+            if (_isUpdatingFromInternal) return;
+
+            float newVol = data.MasterVolume;
+            bool newMute = data.Muted;
+
+            if (Math.Abs(_masterVolume - newVol) > 0.005f || _masterMuted != newMute)
+            {
+                _masterVolume = newVol;
+                _masterMuted = newMute;
+
+                MasterVolumeExternalChanged?.Invoke(this, (newVol, newMute));
+            }
         }
 
         private void AudioSessionManager_OnSessionCreated(object sender, IAudioSessionControl newSession)
@@ -411,8 +447,16 @@ namespace NovaSonics.Services
             {
                 try
                 {
-                    _defaultRenderDevice.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(MasterVolume, 0f, 1f);
-                    _defaultRenderDevice.AudioEndpointVolume.Mute = MasterMuted;
+                    _isUpdatingFromInternal = true;
+                    try
+                    {
+                        _defaultRenderDevice.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(MasterVolume, 0f, 1f);
+                        _defaultRenderDevice.AudioEndpointVolume.Mute = MasterMuted;
+                    }
+                    finally
+                    {
+                        _isUpdatingFromInternal = false;
+                    }
 
                     // Sonar-identical ChatMix attenuation curve:
                     // Balance in [-1.0 (Full Game/Media), +1.0 (Full Chat)]
@@ -584,8 +628,14 @@ namespace NovaSonics.Services
             _peakTimer?.Stop();
             _sessionRefreshTimer?.Stop();
             _pidToProcessNameCache.Clear();
-            _defaultRenderDevice?.Dispose();
+            if (_defaultRenderDevice != null)
+            {
+                try { _defaultRenderDevice.AudioEndpointVolume.OnVolumeNotification -= AudioEndpointVolume_OnVolumeNotification; } catch { }
+                _defaultRenderDevice.Dispose();
+                _defaultRenderDevice = null;
+            }
             _defaultCaptureDevice?.Dispose();
+            _defaultCaptureDevice = null;
             _enumerator?.Dispose();
         }
     }

@@ -73,6 +73,7 @@ namespace NovaSonics.ViewModels
         public ObservableCollection<AppSessionModel> ChatSessions { get; } = new();
 
         private readonly DispatcherTimer _saveDebounceTimer;
+        private bool _isExternalUpdate;
 
         public MixerViewModel(IAudioMixerService mixerService, IConfigService configService)
         {
@@ -106,6 +107,7 @@ namespace NovaSonics.ViewModels
 
             SyncMixerService();
 
+            _mixerService.MasterVolumeExternalChanged += OnMasterVolumeExternalChanged;
             _mixerService.ActiveSessions.CollectionChanged += (s, e) => RefreshCategorizedLists();
             RefreshCategorizedLists();
         }
@@ -147,8 +149,29 @@ namespace NovaSonics.ViewModels
             _saveDebounceTimer.Start();
         }
 
+        private void OnMasterVolumeExternalChanged(object? sender, (float volume, bool isMuted) e)
+        {
+            App.Current?.Dispatcher?.InvokeAsync(() =>
+            {
+                _isExternalUpdate = true;
+                try
+                {
+                    MasterVolume = e.volume;
+                    MasterMuted = e.isMuted;
+                    _configService.Config.MasterVolume = e.volume;
+                    _configService.Config.MasterMuted = e.isMuted;
+                    QueueSave();
+                }
+                finally
+                {
+                    _isExternalUpdate = false;
+                }
+            });
+        }
+
         partial void OnMasterVolumeChanged(float value)
         {
+            if (_isExternalUpdate) return;
             _mixerService.MasterVolume = value;
             _configService.Config.MasterVolume = value;
             QueueSave();
@@ -184,6 +207,7 @@ namespace NovaSonics.ViewModels
 
         partial void OnMasterMutedChanged(bool value)
         {
+            if (_isExternalUpdate) return;
             _mixerService.MasterMuted = value;
             _configService.Config.MasterMuted = value;
             QueueSave();
