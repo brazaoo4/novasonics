@@ -15,6 +15,9 @@ namespace NovaSonics
         private System.Windows.Forms.NotifyIcon? _notifyIcon;
         private bool _isExplicitExit;
 
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        private static extern bool DestroyIcon(IntPtr hIcon);
+
         public MainWindow(MainViewModel viewModel, IConfigService configService)
         {
             InitializeComponent();
@@ -49,7 +52,9 @@ namespace NovaSonics
                     using var innerBrush = new SolidBrush(System.Drawing.Color.FromArgb(0x11, 0x13, 0x17));
                     g.FillEllipse(innerBrush, 4, 4, 8, 8);
                 }
-                _notifyIcon.Icon = System.Drawing.Icon.FromHandle(bmp.GetHicon());
+                IntPtr hIcon = bmp.GetHicon();
+                try { _notifyIcon.Icon = (System.Drawing.Icon)System.Drawing.Icon.FromHandle(hIcon).Clone(); }
+                finally { DestroyIcon(hIcon); }
                 _notifyIcon.Text = "NovaSonics - Arctis Nova 7 Suite";
                 _notifyIcon.Visible = true;
 

@@ -73,6 +73,7 @@ namespace NovaSonics.ViewModels
         {
             _configService.Config.StartMinimizedToTray = value;
             _configService.Save();
+            StartupHelper.SetEnabled(value);
         }
 
         [RelayCommand]

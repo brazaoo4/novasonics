@@ -204,7 +204,7 @@ namespace NovaSonics.Services
                             catch { }
 
                             // Determine channel assignment
-                            AppChannel channel = AppChannel.Game;
+                            AppChannel channel = AppChannel.Master;
                             var savedAssignments = _configService.Config.AppChannelAssignments;
                             if (savedAssignments.TryGetValue(procName, out var savedChan))
                             {
@@ -298,10 +298,15 @@ namespace NovaSonics.Services
                         targetVolume = ChatVolume * mChat;
                         targetMute = ChatMuted || MasterMuted;
                     }
-                    else // Game / Master
+                    else if (app.Channel == AppChannel.Game)
                     {
                         targetVolume = GameVolume * mGame;
                         targetMute = GameMuted || MasterMuted;
+                    }
+                    else // Master: unrouted, only the master level applies
+                    {
+                        targetVolume = 1.0f;
+                        targetMute = MasterMuted;
                     }
 
                     session.SimpleAudioVolume.Volume = Math.Clamp(targetVolume, 0.0f, 1.0f);

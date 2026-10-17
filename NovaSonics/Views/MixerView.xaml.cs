@@ -22,6 +22,15 @@ namespace NovaSonics.Views
             }
         }
 
+        private void MasterApps_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent("AppSessionModel") && e.Data.GetData("AppSessionModel") is AppSessionModel app
+                && DataContext is MixerViewModel vm)
+            {
+                vm.MoveAppToChannel(app, AppChannel.Master);
+            }
+        }
+
         private void GameApps_Drop(object sender, DragEventArgs e)
         {
             if (e.Data.GetDataPresent("AppSessionModel") && e.Data.GetData("AppSessionModel") is AppSessionModel app)
