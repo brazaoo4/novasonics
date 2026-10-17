@@ -190,6 +190,7 @@ namespace NovaSonics.Services
                 {
                     if (_defaultRenderDevice != null)
                     {
+                        try { _defaultRenderDevice.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
                         try { _defaultRenderDevice.AudioEndpointVolume.OnVolumeNotification -= AudioEndpointVolume_OnVolumeNotification; } catch { }
                         _defaultRenderDevice.Dispose();
                         _defaultRenderDevice = null;
@@ -264,7 +265,9 @@ namespace NovaSonics.Services
 
                     for (int i = 0; i < sessions.Count; i++)
                     {
-                        var s = sessions[i];
+                        using var s = sessions[i];
+                        if (s.State == AudioSessionState.AudioSessionStateExpired) continue;
+
                         if (s.IsSystemSoundsSession)
                         {
                             string sysProc = "SystemSounds";
@@ -470,7 +473,15 @@ namespace NovaSonics.Services
                     var sessions = _defaultRenderDevice.AudioSessionManager.Sessions;
                     for (int i = 0; i < sessions.Count; i++)
                     {
-                        var s = sessions[i];
+                        using var s = sessions[i];
+                        if (s.State == AudioSessionState.AudioSessionStateExpired) continue;
+
+                        // Only adjust volume for active streaming sessions or system sounds.
+                        // Writing to inactive sessions causes Windows Audio Service to recreate
+                        // persistent PropertyStore entries and keeps phantom zombie sessions alive.
+                        if (!s.IsSystemSoundsSession && s.State != AudioSessionState.AudioSessionStateActive)
+                            continue;
+
                         if (s.IsSystemSoundsSession)
                         {
                             var model = ActiveSessions.FirstOrDefault(a => a.ProcessName.Equals("SystemSounds", StringComparison.OrdinalIgnoreCase));
@@ -569,7 +580,9 @@ namespace NovaSonics.Services
                         var sessions = _defaultRenderDevice.AudioSessionManager.Sessions;
                         for (int i = 0; i < sessions.Count; i++)
                         {
-                            var s = sessions[i];
+                            using var s = sessions[i];
+                            if (s.State == AudioSessionState.AudioSessionStateExpired) continue;
+
                             float peak = 0f;
                             try { peak = s.AudioMeterInformation.MasterPeakValue; } catch { }
 

@@ -18,5 +18,6 @@ namespace NovaSonics.Services
         bool SwitchPreviousDevice();
         void HandleHeadsetPowerStateChanged(bool isOnline);
         void EnforcePriorityDevice(bool isHeadsetOnline = false);
+        int PurgeStalePropertyStoreKeys(string? activeDeviceId = null);
     }
 }

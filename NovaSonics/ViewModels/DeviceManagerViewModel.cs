@@ -11,6 +11,7 @@ namespace NovaSonics.ViewModels
     {
         private readonly IDeviceSwitchService _deviceService;
         private readonly IConfigService _configService;
+        private readonly INotificationService? _notificationService;
 
         public ObservableCollection<AudioDeviceModel> PriorityDevices { get; } = new();
         public ObservableCollection<AudioDeviceModel> ExcludedDevices { get; } = new();
@@ -30,10 +31,11 @@ namespace NovaSonics.ViewModels
         [ObservableProperty]
         private AudioDeviceModel? _currentDevice;
 
-        public DeviceManagerViewModel(IDeviceSwitchService deviceService, IConfigService configService)
+        public DeviceManagerViewModel(IDeviceSwitchService deviceService, IConfigService configService, INotificationService? notificationService = null)
         {
             _deviceService = deviceService;
             _configService = configService;
+            _notificationService = notificationService;
 
             var cfg = _configService.Config;
             _autoSwitchEnabled = cfg.AutoSwitchEnabled;
@@ -43,6 +45,14 @@ namespace NovaSonics.ViewModels
 
             _deviceService.DefaultDeviceChanged += (s, dev) => CurrentDevice = dev;
 
+            RefreshLists();
+        }
+
+        [RelayCommand]
+        public void CleanVolumeMixer()
+        {
+            int purged = _deviceService.PurgeStalePropertyStoreKeys(_deviceService.CurrentDefaultDevice?.Id);
+            _notificationService?.ShowCustomToast("Volume Mixer Cleaned", $"Purged {purged} duplicate / ghost audio entries from Windows.");
             RefreshLists();
         }
 

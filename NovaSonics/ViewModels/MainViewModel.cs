@@ -45,7 +45,7 @@ namespace NovaSonics.ViewModels
             _headsetStatus = _headsetService.Status;
 
             MixerVM = new MixerViewModel(_mixerService, _configService);
-            DeviceManagerVM = new DeviceManagerViewModel(_deviceService, _configService);
+            DeviceManagerVM = new DeviceManagerViewModel(_deviceService, _configService, _notificationService);
             EqualizerVM = new EqualizerViewModel(_headsetService, _configService, _notificationService);
             HardwareVM = new HardwareViewModel(_headsetService, _configService, _notificationService);
 

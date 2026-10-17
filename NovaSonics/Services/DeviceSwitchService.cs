@@ -40,6 +40,11 @@ namespace NovaSonics.Services
                 }
                 catch { }
 
+                if (!string.IsNullOrEmpty(defaultId))
+                {
+                    PurgeStalePropertyStoreKeys(defaultId);
+                }
+
                 var endpoints = _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
                 var priorityList = _configService.Config.PriorityDevices ?? new List<string>();
                 var excludedList = _configService.Config.ExcludedDevices ?? new List<string>();
@@ -142,6 +147,9 @@ namespace NovaSonics.Services
             bool ok = SetDefaultEndpointForAllRoles(deviceId);
             if (ok)
             {
+                // Purge stale PropertyStore entries from other devices to prevent duplicate Volume Mixer entries
+                PurgeStalePropertyStoreKeys(deviceId);
+
                 // If UseSameDeviceOnAllChannels is enabled and we switched to Nova 7, also switch default capture to Nova 7 Mic
                 if (_configService.Config.UseSameDeviceOnAllChannels)
                 {
@@ -155,6 +163,104 @@ namespace NovaSonics.Services
                 }
             }
             return ok;
+        }
+
+        public int PurgeStalePropertyStoreKeys(string? activeDeviceId = null)
+        {
+            int deletedCount = 0;
+            try
+            {
+                string targetHwKey = string.Empty;
+                string devId = activeDeviceId ?? CurrentDefaultDevice?.Id ?? string.Empty;
+
+                if (!string.IsNullOrEmpty(devId))
+                {
+                    try
+                    {
+                        using var dev = _enumerator.GetDevice(devId);
+                        for (int i = 0; i < dev.Properties.Count; i++)
+                        {
+                            var val = dev.Properties[i].Value;
+                            if (val is string str)
+                            {
+                                var m = System.Text.RegularExpressions.Regex.Match(str, @"(?i)\\\?[\\]?([a-z0-9]+#[^#]+)#");
+                                if (m.Success)
+                                {
+                                    targetHwKey = m.Groups[1].Value;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                const string storeSubKey = @"Software\Microsoft\Internet Explorer\LowRegistry\Audio\PolicyConfig\PropertyStore";
+                using var baseKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(storeSubKey, true);
+                if (baseKey == null) return 0;
+
+                var subKeyNames = baseKey.GetSubKeyNames();
+                foreach (var name in subKeyNames)
+                {
+                    try
+                    {
+                        using var sub = baseKey.OpenSubKey(name);
+                        string? defVal = sub?.GetValue(null) as string;
+                        if (string.IsNullOrEmpty(defVal)) continue;
+
+                        bool shouldDelete = false;
+
+                        // 1. Always purge legacy SteelSeries Sonar virtual devices (root#media)
+                        if (defVal.Contains("root#media", StringComparison.OrdinalIgnoreCase))
+                        {
+                            shouldDelete = true;
+                        }
+                        // 2. If target hardware key is known, purge keys belonging to other physical devices
+                        else if (!string.IsNullOrEmpty(targetHwKey))
+                        {
+                            var match = System.Text.RegularExpressions.Regex.Match(defVal, @"(?i)\\\?[\\]?([a-z0-9]+#[^#]+)#");
+                            if (match.Success)
+                            {
+                                string devHwKey = match.Groups[1].Value;
+                                if (!string.Equals(devHwKey, targetHwKey, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    shouldDelete = true;
+                                }
+                            }
+                        }
+
+                        // 3. Purge outdated Discord squirrel version folders if they no longer exist
+                        if (!shouldDelete && defVal.Contains(@"\Discord\app-", StringComparison.OrdinalIgnoreCase))
+                        {
+                            try
+                            {
+                                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                                int appIdx = defVal.IndexOf("app-", StringComparison.OrdinalIgnoreCase);
+                                if (appIdx >= 0)
+                                {
+                                    int endIdx = defVal.IndexOf('\\', appIdx);
+                                    string folder = (endIdx > appIdx) ? defVal.Substring(appIdx, endIdx - appIdx) : defVal.Substring(appIdx);
+                                    string fullPath = System.IO.Path.Combine(localAppData, "Discord", folder);
+                                    if (!System.IO.Directory.Exists(fullPath))
+                                    {
+                                        shouldDelete = true;
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+
+                        if (shouldDelete)
+                        {
+                            baseKey.DeleteSubKeyTree(name, false);
+                            deletedCount++;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            return deletedCount;
         }
 
         private void TrySyncCaptureDevice(string renderDeviceId)
