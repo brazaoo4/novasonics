@@ -10,11 +10,13 @@ namespace NovaSonics.Services
 
         float MasterVolume { get; set; }
         float GameVolume { get; set; }
+        float MediaVolume { get; set; }
         float ChatVolume { get; set; }
         float MicVolume { get; set; }
 
         bool MasterMuted { get; set; }
         bool GameMuted { get; set; }
+        bool MediaMuted { get; set; }
         bool ChatMuted { get; set; }
         bool MicMuted { get; set; }
 
@@ -22,6 +24,7 @@ namespace NovaSonics.Services
 
         float MasterPeak { get; }
         float GamePeak { get; }
+        float MediaPeak { get; }
         float ChatPeak { get; }
         float MicPeak { get; }
 

@@ -426,16 +426,78 @@ namespace NovaSonics.Services
         public Task SetEqualizerBandsAsync(float[] bands)
         {
             if (bands == null || bands.Length != 10) return Task.CompletedTask;
-            byte[] args = new byte[10];
-            for (int i = 0; i < 10; i++)
-            {
-                float clamped = Math.Clamp(bands[i], -10.0f, 10.0f);
-                // Formula from base_arctis_nova_7_tx.edevice: (integer (* 2 (+ 10 gain)))
-                // -10dB -> 0, 0dB -> 20, +10dB -> 40
-                args[i] = (byte)Math.Clamp((int)Math.Round(2 * (10.0f + clamped)), 0, 40);
-            }
 
-            return Task.Run(() => SendWriteAndSaveToFlash(0x33, args));
+            return Task.Run(() =>
+            {
+                lock (_ioLock)
+                {
+                    if (_commandStream == null) return;
+
+                    if (LegacyBatteryScalePids.Contains(_activePid))
+                    {
+                        byte[] args = new byte[10];
+                        for (int i = 0; i < 10; i++)
+                        {
+                            float clamped = Math.Clamp(bands[i], -10.0f, 10.0f);
+                            args[i] = (byte)Math.Clamp((int)Math.Round(2 * (10.0f + clamped)), 0, 40);
+                        }
+                        SendWriteAndSaveToFlash(0x33, args);
+                        return;
+                    }
+
+                    // Gen 2 / Upgrade PEQ sequence:
+                    // Packet 1: 0xA7 Custom preset name
+                    byte[] namePkt = new byte[65];
+                    namePkt[0] = 0x00;
+                    namePkt[1] = 0xA7;
+                    namePkt[2] = 0x00; // 2.4G connection
+                    namePkt[3] = 0x01; // Custom preset
+                    byte[] nameBytes = System.Text.Encoding.ASCII.GetBytes("Custom\0");
+                    Array.Copy(nameBytes, 0, namePkt, 4, Math.Min(nameBytes.Length, 61));
+                    _commandStream.Write(namePkt, 0, namePkt.Length);
+                    Thread.Sleep(30);
+
+                    // Packet 2: 0x33 PEQ 10 bands (60 bytes payload)
+                    byte[] bandPkt = new byte[65];
+                    bandPkt[0] = 0x00;
+                    bandPkt[1] = 0x33;
+                    bandPkt[2] = 0x00; // 2.4G connection
+
+                    ushort[] freqs = { 32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
+                    for (int i = 0; i < 10; i++)
+                    {
+                        int offset = 3 + (i * 6);
+                        ushort f = freqs[i];
+                        byte filterType = 1; // Peaking EQ
+                        float clampedDb = Math.Clamp(bands[i], -12.0f, 12.0f);
+                        sbyte gainByte = (sbyte)Math.Clamp((int)Math.Round(clampedDb * 10f), -120, 120);
+                        ushort qFactor = 1414; // 1.414 * 1000
+
+                        bandPkt[offset] = (byte)(f & 0xFF);
+                        bandPkt[offset + 1] = (byte)((f >> 8) & 0xFF);
+                        bandPkt[offset + 2] = filterType;
+                        bandPkt[offset + 3] = (byte)gainByte;
+                        bandPkt[offset + 4] = (byte)(qFactor & 0xFF);
+                        bandPkt[offset + 5] = (byte)((qFactor >> 8) & 0xFF);
+                    }
+                    _commandStream.Write(bandPkt, 0, bandPkt.Length);
+                    Thread.Sleep(30);
+
+                    // Packet 3: 0x27 update_complete trigger (DSP reconfiguration)
+                    byte[] updatePkt = new byte[65];
+                    updatePkt[0] = 0x00;
+                    updatePkt[1] = 0x27;
+                    _commandStream.Write(updatePkt, 0, updatePkt.Length);
+                    Thread.Sleep(30);
+
+                    // Packet 4: 0x09 save_to_flash commit
+                    byte[] savePkt = new byte[65];
+                    savePkt[0] = 0x00;
+                    savePkt[1] = 0x09;
+                    _commandStream.Write(savePkt, 0, savePkt.Length);
+                    Thread.Sleep(500);
+                }
+            });
         }
 
         public void Dispose()

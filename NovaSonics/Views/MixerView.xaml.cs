@@ -1,3 +1,4 @@
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -33,23 +34,44 @@ namespace NovaSonics.Views
 
         private void GameApps_Drop(object sender, DragEventArgs e)
         {
-            if (e.Data.GetDataPresent("AppSessionModel") && e.Data.GetData("AppSessionModel") is AppSessionModel app)
+            if (e.Data.GetDataPresent("AppSessionModel") && e.Data.GetData("AppSessionModel") is AppSessionModel app
+                && DataContext is MixerViewModel vm)
             {
-                if (DataContext is MixerViewModel vm)
-                {
-                    vm.MoveAppToChannel(app, AppChannel.Game);
-                }
+                vm.MoveAppToChannel(app, AppChannel.Game);
+            }
+        }
+
+        private void MediaApps_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent("AppSessionModel") && e.Data.GetData("AppSessionModel") is AppSessionModel app
+                && DataContext is MixerViewModel vm)
+            {
+                vm.MoveAppToChannel(app, AppChannel.Media);
             }
         }
 
         private void ChatApps_Drop(object sender, DragEventArgs e)
         {
-            if (e.Data.GetDataPresent("AppSessionModel") && e.Data.GetData("AppSessionModel") is AppSessionModel app)
+            if (e.Data.GetDataPresent("AppSessionModel") && e.Data.GetData("AppSessionModel") is AppSessionModel app
+                && DataContext is MixerViewModel vm)
             {
-                if (DataContext is MixerViewModel vm)
-                {
-                    vm.MoveAppToChannel(app, AppChannel.Chat);
-                }
+                vm.MoveAppToChannel(app, AppChannel.Chat);
+            }
+        }
+
+        private void MoveToGame_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is AppSessionModel app && DataContext is MixerViewModel vm)
+            {
+                vm.MoveAppToChannel(app, AppChannel.Game);
+            }
+        }
+
+        private void MoveToMedia_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is AppSessionModel app && DataContext is MixerViewModel vm)
+            {
+                vm.MoveAppToChannel(app, AppChannel.Media);
             }
         }
 
@@ -61,11 +83,53 @@ namespace NovaSonics.Views
             }
         }
 
-        private void MoveToGame_Click(object sender, RoutedEventArgs e)
+        private void Master_MouseWheel(object sender, MouseWheelEventArgs e)
         {
-            if (sender is Button btn && btn.Tag is AppSessionModel app && DataContext is MixerViewModel vm)
+            if (DataContext is MixerViewModel vm)
             {
-                vm.MoveAppToChannel(app, AppChannel.Game);
+                float step = e.Delta > 0 ? 0.02f : -0.02f;
+                vm.MasterVolume = Math.Clamp(vm.MasterVolume + step, 0f, 1f);
+                e.Handled = true;
+            }
+        }
+
+        private void Game_MouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (DataContext is MixerViewModel vm)
+            {
+                float step = e.Delta > 0 ? 0.02f : -0.02f;
+                vm.GameVolume = Math.Clamp(vm.GameVolume + step, 0f, 1f);
+                e.Handled = true;
+            }
+        }
+
+        private void Media_MouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (DataContext is MixerViewModel vm)
+            {
+                float step = e.Delta > 0 ? 0.02f : -0.02f;
+                vm.MediaVolume = Math.Clamp(vm.MediaVolume + step, 0f, 1f);
+                e.Handled = true;
+            }
+        }
+
+        private void Chat_MouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (DataContext is MixerViewModel vm)
+            {
+                float step = e.Delta > 0 ? 0.02f : -0.02f;
+                vm.ChatVolume = Math.Clamp(vm.ChatVolume + step, 0f, 1f);
+                e.Handled = true;
+            }
+        }
+
+        private void Mic_MouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (DataContext is MixerViewModel vm)
+            {
+                float step = e.Delta > 0 ? 0.02f : -0.02f;
+                vm.MicVolume = Math.Clamp(vm.MicVolume + step, 0f, 1f);
+                e.Handled = true;
             }
         }
     }

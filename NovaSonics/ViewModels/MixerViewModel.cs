@@ -23,6 +23,9 @@ namespace NovaSonics.ViewModels
         private float _gameVolume;
 
         [ObservableProperty]
+        private float _mediaVolume;
+
+        [ObservableProperty]
         private float _chatVolume;
 
         [ObservableProperty]
@@ -33,6 +36,9 @@ namespace NovaSonics.ViewModels
 
         [ObservableProperty]
         private bool _gameMuted;
+
+        [ObservableProperty]
+        private bool _mediaMuted;
 
         [ObservableProperty]
         private bool _chatMuted;
@@ -50,6 +56,9 @@ namespace NovaSonics.ViewModels
         private float _gamePeak;
 
         [ObservableProperty]
+        private float _mediaPeak;
+
+        [ObservableProperty]
         private float _chatPeak;
 
         [ObservableProperty]
@@ -59,6 +68,7 @@ namespace NovaSonics.ViewModels
 
         public ObservableCollection<AppSessionModel> MasterSessions { get; } = new();
         public ObservableCollection<AppSessionModel> GameSessions { get; } = new();
+        public ObservableCollection<AppSessionModel> MediaSessions { get; } = new();
         public ObservableCollection<AppSessionModel> ChatSessions { get; } = new();
 
         public MixerViewModel(IAudioMixerService mixerService, IConfigService configService)
@@ -69,11 +79,13 @@ namespace NovaSonics.ViewModels
             var cfg = _configService.Config;
             _masterVolume = cfg.MasterVolume;
             _gameVolume = cfg.GameVolume;
+            _mediaVolume = cfg.MediaVolume;
             _chatVolume = cfg.ChatVolume;
             _micVolume = cfg.MicVolume;
 
             _masterMuted = cfg.MasterMuted;
             _gameMuted = cfg.GameMuted;
+            _mediaMuted = cfg.MediaMuted;
             _chatMuted = cfg.ChatMuted;
             _micMuted = cfg.MicMuted;
 
@@ -89,11 +101,13 @@ namespace NovaSonics.ViewModels
         {
             _mixerService.MasterVolume = MasterVolume;
             _mixerService.GameVolume = GameVolume;
+            _mixerService.MediaVolume = MediaVolume;
             _mixerService.ChatVolume = ChatVolume;
             _mixerService.MicVolume = MicVolume;
 
             _mixerService.MasterMuted = MasterMuted;
             _mixerService.GameMuted = GameMuted;
+            _mixerService.MediaMuted = MediaMuted;
             _mixerService.ChatMuted = ChatMuted;
             _mixerService.MicMuted = MicMuted;
 
@@ -104,6 +118,7 @@ namespace NovaSonics.ViewModels
         {
             MasterPeak = _mixerService.MasterPeak;
             GamePeak = _mixerService.GamePeak;
+            MediaPeak = _mixerService.MediaPeak;
             ChatPeak = _mixerService.ChatPeak;
             MicPeak = _mixerService.MicPeak;
         }
@@ -119,6 +134,13 @@ namespace NovaSonics.ViewModels
         {
             _mixerService.GameVolume = value;
             _configService.Config.GameVolume = value;
+            _configService.Save();
+        }
+
+        partial void OnMediaVolumeChanged(float value)
+        {
+            _mixerService.MediaVolume = value;
+            _configService.Config.MediaVolume = value;
             _configService.Save();
         }
 
@@ -150,6 +172,13 @@ namespace NovaSonics.ViewModels
             _configService.Save();
         }
 
+        partial void OnMediaMutedChanged(bool value)
+        {
+            _mixerService.MediaMuted = value;
+            _configService.Config.MediaMuted = value;
+            _configService.Save();
+        }
+
         partial void OnChatMutedChanged(bool value)
         {
             _mixerService.ChatMuted = value;
@@ -178,6 +207,9 @@ namespace NovaSonics.ViewModels
         public void ToggleGameMute() => GameMuted = !GameMuted;
 
         [RelayCommand]
+        public void ToggleMediaMute() => MediaMuted = !MediaMuted;
+
+        [RelayCommand]
         public void ToggleChatMute() => ChatMuted = !ChatMuted;
 
         [RelayCommand]
@@ -196,6 +228,7 @@ namespace NovaSonics.ViewModels
             {
                 MasterSessions.Clear();
                 GameSessions.Clear();
+                MediaSessions.Clear();
                 ChatSessions.Clear();
 
                 foreach (var s in _mixerService.ActiveSessions)
@@ -204,6 +237,9 @@ namespace NovaSonics.ViewModels
                     {
                         case AppChannel.Chat:
                             ChatSessions.Add(s);
+                            break;
+                        case AppChannel.Media:
+                            MediaSessions.Add(s);
                             break;
                         case AppChannel.Game:
                             GameSessions.Add(s);

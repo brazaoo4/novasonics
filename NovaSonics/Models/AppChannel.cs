@@ -5,6 +5,7 @@ namespace NovaSonics.Models
         Master,
         Game,
         Chat,
+        Media,
         Mic
     }
 }

@@ -16,6 +16,7 @@ namespace NovaSonics.Converters
                 {
                     AppChannel.Chat => new SolidColorBrush(Color.FromRgb(0x8B, 0x5C, 0xF6)), // Purple/Violet #8B5CF6
                     AppChannel.Game => new SolidColorBrush(Color.FromRgb(0x00, 0xE5, 0xFF)), // Cyan #00E5FF
+                    AppChannel.Media => new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B)), // Amber #F59E0B
                     AppChannel.Mic => new SolidColorBrush(Color.FromRgb(0x10, 0xB9, 0x81)),  // Emerald #10B981
                     _ => new SolidColorBrush(Color.FromRgb(0x94, 0xA3, 0xB8))                // Slate #94A3B8
                 };

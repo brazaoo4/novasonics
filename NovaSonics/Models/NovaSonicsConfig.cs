@@ -6,11 +6,13 @@ namespace NovaSonics.Models
     {
         public float MasterVolume { get; set; } = 1.0f;
         public float GameVolume { get; set; } = 1.0f;
+        public float MediaVolume { get; set; } = 1.0f;
         public float ChatVolume { get; set; } = 1.0f;
         public float MicVolume { get; set; } = 1.0f;
 
         public bool MasterMuted { get; set; } = false;
         public bool GameMuted { get; set; } = false;
+        public bool MediaMuted { get; set; } = false;
         public bool ChatMuted { get; set; } = false;
         public bool MicMuted { get; set; } = false;
 

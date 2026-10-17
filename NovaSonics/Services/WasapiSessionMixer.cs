@@ -27,16 +27,19 @@ namespace NovaSonics.Services
         private readonly object _sessionLock = new();
 
         private readonly HashSet<string> _defaultChatProcesses = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _defaultMediaProcesses = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _defaultGameProcesses = new(StringComparer.OrdinalIgnoreCase);
 
         public ObservableCollection<AppSessionModel> ActiveSessions { get; } = new();
 
         private float _masterVolume = 1.0f;
         private float _gameVolume = 1.0f;
+        private float _mediaVolume = 1.0f;
         private float _chatVolume = 1.0f;
         private float _micVolume = 1.0f;
         private bool _masterMuted;
         private bool _gameMuted;
+        private bool _mediaMuted;
         private bool _chatMuted;
         private bool _micMuted;
         private float _chatMixBalance;
@@ -50,6 +53,11 @@ namespace NovaSonics.Services
         {
             get => _gameVolume;
             set { _gameVolume = Math.Clamp(value, 0f, 1f); ApplyVolumes(); }
+        }
+        public float MediaVolume
+        {
+            get => _mediaVolume;
+            set { _mediaVolume = Math.Clamp(value, 0f, 1f); ApplyVolumes(); }
         }
         public float ChatVolume
         {
@@ -72,6 +80,11 @@ namespace NovaSonics.Services
             get => _gameMuted;
             set { _gameMuted = value; ApplyVolumes(); }
         }
+        public bool MediaMuted
+        {
+            get => _mediaMuted;
+            set { _mediaMuted = value; ApplyVolumes(); }
+        }
         public bool ChatMuted
         {
             get => _chatMuted;
@@ -91,6 +104,7 @@ namespace NovaSonics.Services
 
         public float MasterPeak { get; private set; }
         public float GamePeak { get; private set; }
+        public float MediaPeak { get; private set; }
         public float ChatPeak { get; private set; }
         public float MicPeak { get; private set; }
 
@@ -117,14 +131,14 @@ namespace NovaSonics.Services
                             foreach (var item in chatArr.EnumerateArray())
                                 _defaultChatProcesses.Add(Path.GetFileNameWithoutExtension(item.GetString() ?? ""));
                         }
-                        if (cats.TryGetProperty("game", out var gameArr))
-                        {
-                            foreach (var item in gameArr.EnumerateArray())
-                                _defaultGameProcesses.Add(Path.GetFileNameWithoutExtension(item.GetString() ?? ""));
-                        }
                         if (cats.TryGetProperty("media", out var mediaArr))
                         {
                             foreach (var item in mediaArr.EnumerateArray())
+                                _defaultMediaProcesses.Add(Path.GetFileNameWithoutExtension(item.GetString() ?? ""));
+                        }
+                        if (cats.TryGetProperty("game", out var gameArr))
+                        {
+                            foreach (var item in gameArr.EnumerateArray())
                                 _defaultGameProcesses.Add(Path.GetFileNameWithoutExtension(item.GetString() ?? ""));
                         }
                         if (cats.TryGetProperty("browser", out var browserArr))
@@ -139,7 +153,9 @@ namespace NovaSonics.Services
 
             string[] builtInChat = { "Discord", "TeamSpeak3", "ts3client_win64", "Zoom", "Teams", "ms-teams", "Slack", "Skype", "Mumble", "Ventrilo" };
             foreach (var c in builtInChat) _defaultChatProcesses.Add(c);
-            string[] builtInGame = { "chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "Spotify", "vlc", "steam", "steamwebhelper", "epicgameslauncher", "gog_galaxy", "eadesktop", "battlenet", "riotclientux" };
+            string[] builtInMedia = { "Spotify", "vlc", "wmplayer", "musicbee", "foobar2000", "tidal", "deezer", "aimp", "plexamp", "audacity" };
+            foreach (var m in builtInMedia) _defaultMediaProcesses.Add(m);
+            string[] builtInGame = { "chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "steam", "steamwebhelper", "epicgameslauncher", "gog_galaxy", "eadesktop", "battlenet", "riotclientux" };
             foreach (var g in builtInGame) _defaultGameProcesses.Add(g);
         }
 
@@ -323,6 +339,8 @@ namespace NovaSonics.Services
             {
                 if (string.Equals(saved, "chat", StringComparison.OrdinalIgnoreCase))
                     return AppChannel.Chat;
+                if (string.Equals(saved, "media", StringComparison.OrdinalIgnoreCase))
+                    return AppChannel.Media;
                 if (string.Equals(saved, "game", StringComparison.OrdinalIgnoreCase))
                     return AppChannel.Game;
                 if (string.Equals(saved, "master", StringComparison.OrdinalIgnoreCase))
@@ -332,7 +350,10 @@ namespace NovaSonics.Services
             if (_defaultChatProcesses.Contains(processName))
                 return AppChannel.Chat;
 
-            // Default all games, launchers, media, and system notifications to Game channel (identical to Sonar)
+            if (_defaultMediaProcesses.Contains(processName))
+                return AppChannel.Media;
+
+            // Default all games, launchers, and system notifications to Game channel (identical to Sonar)
             return AppChannel.Game;
         }
 
@@ -343,6 +364,7 @@ namespace NovaSonics.Services
             _configService.Config.AppChannelAssignments[session.ProcessName] = channel switch
             {
                 AppChannel.Chat => "chat",
+                AppChannel.Media => "media",
                 AppChannel.Game => "game",
                 _ => "master"
             };
@@ -373,11 +395,12 @@ namespace NovaSonics.Services
                     _defaultRenderDevice.AudioEndpointVolume.Mute = MasterMuted;
 
                     // Sonar-identical ChatMix attenuation curve:
-                    // Balance in [-1.0 (Full Game), +1.0 (Full Chat)]
+                    // Balance in [-1.0 (Full Game/Media), +1.0 (Full Chat)]
                     float gameAtten = ChatMixBalance <= 0f ? 1.0f : Math.Clamp(1.0f - ChatMixBalance, 0f, 1f);
                     float chatAtten = ChatMixBalance >= 0f ? 1.0f : Math.Clamp(1.0f + ChatMixBalance, 0f, 1f);
 
                     float effectiveGameVol = GameMuted ? 0f : Math.Clamp(GameVolume * gameAtten, 0f, 1f);
+                    float effectiveMediaVol = MediaMuted ? 0f : Math.Clamp(MediaVolume * gameAtten, 0f, 1f);
                     float effectiveChatVol = ChatMuted ? 0f : Math.Clamp(ChatVolume * chatAtten, 0f, 1f);
 
                     var sessions = _defaultRenderDevice.AudioSessionManager.Sessions;
@@ -392,6 +415,11 @@ namespace NovaSonics.Services
                             {
                                 s.SimpleAudioVolume.Volume = effectiveGameVol;
                                 s.SimpleAudioVolume.Mute = GameMuted || MasterMuted;
+                            }
+                            else if (channel == AppChannel.Media)
+                            {
+                                s.SimpleAudioVolume.Volume = effectiveMediaVol;
+                                s.SimpleAudioVolume.Mute = MediaMuted || MasterMuted;
                             }
                             else if (channel == AppChannel.Chat)
                             {
@@ -422,6 +450,11 @@ namespace NovaSonics.Services
                                 s.SimpleAudioVolume.Volume = effectiveChatVol;
                                 s.SimpleAudioVolume.Mute = ChatMuted || MasterMuted;
                             }
+                            else if (modelApp.Channel == AppChannel.Media)
+                            {
+                                s.SimpleAudioVolume.Volume = effectiveMediaVol;
+                                s.SimpleAudioVolume.Mute = MediaMuted || MasterMuted;
+                            }
                             else if (modelApp.Channel == AppChannel.Game)
                             {
                                 s.SimpleAudioVolume.Volume = effectiveGameVol;
@@ -445,6 +478,7 @@ namespace NovaSonics.Services
                         MasterPeak = _defaultRenderDevice.AudioMeterInformation.MasterPeakValue;
 
                         float maxGamePeak = 0f;
+                        float maxMediaPeak = 0f;
                         float maxChatPeak = 0f;
 
                         var sessions = _defaultRenderDevice.AudioSessionManager.Sessions;
@@ -462,6 +496,7 @@ namespace NovaSonics.Services
                                     model.PeakValue = peak;
                                     var channel = model.Channel;
                                     if (channel == AppChannel.Game && peak > maxGamePeak) maxGamePeak = peak;
+                                    else if (channel == AppChannel.Media && peak > maxMediaPeak) maxMediaPeak = peak;
                                     else if (channel == AppChannel.Chat && peak > maxChatPeak) maxChatPeak = peak;
                                 }
                                 continue;
@@ -478,6 +513,10 @@ namespace NovaSonics.Services
                                 {
                                     if (peak > maxChatPeak) maxChatPeak = peak;
                                 }
+                                else if (app.Channel == AppChannel.Media)
+                                {
+                                    if (peak > maxMediaPeak) maxMediaPeak = peak;
+                                }
                                 else if (app.Channel == AppChannel.Game)
                                 {
                                     if (peak > maxGamePeak) maxGamePeak = peak;
@@ -486,6 +525,7 @@ namespace NovaSonics.Services
                         }
 
                         GamePeak = maxGamePeak;
+                        MediaPeak = maxMediaPeak;
                         ChatPeak = maxChatPeak;
                     }
 

@@ -8,8 +8,8 @@
         xmlns:conv="clr-namespace:NovaSonics.Converters"
         mc:Ignorable="d"
         Title="NovaSonics - Arctis Nova 7 Standalone Suite" 
-        Height="780" Width="1080"
-        MinHeight="650" MinWidth="900"
+        Height="780" Width="1140"
+        MinHeight="650" MinWidth="980"
         WindowStartupLocation="CenterScreen"
         Background="#111317">
 
