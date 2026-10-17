@@ -50,18 +50,61 @@ namespace NovaSonics.Models
         public string? ChatDeviceId { get; set; }
         public string? MicDeviceId { get; set; }
 
-        // Spatial Audio (Game & Media profiles)
+        // Per-profile Spatial Audio & Voice DSP Configurations
+        public Dictionary<string, SpatialProfileSettings> SpatialProfiles { get; set; } = new()
+        {
+            ["Game"] = new SpatialProfileSettings { Enabled = false, Mode = "Headphone", Tuning = 80.0f, Distance = 75.0f },
+            ["Media"] = new SpatialProfileSettings { Enabled = false, Mode = "Headphone", Tuning = 50.0f, Distance = 75.0f }
+        };
+
+        public Dictionary<string, VoiceProfileSettings> VoiceProfiles { get; set; } = new()
+        {
+            ["Chat"] = new VoiceProfileSettings { ClearCastAiEnabled = true, ClearCastSensitivity = 50.0f },
+            ["Mic"] = new VoiceProfileSettings { ClearCastAiEnabled = true, ClearCastSensitivity = 50.0f }
+        };
+
+        // Fallback / legacy single properties
         public bool SpatialAudioEnabled { get; set; } = false;
-        public string SpatialAudioMode { get; set; } = "Headphone"; // "Headphone" or "Speaker"
-        public float SpatialTuning { get; set; } = 80.0f; // 0 (Performance) to 100 (Immersion)
-        public float SpatialDistance { get; set; } = 75.0f; // 0 to 100
+        public string SpatialAudioMode { get; set; } = "Headphone";
+        public float SpatialTuning { get; set; } = 80.0f;
+        public float SpatialDistance { get; set; } = 75.0f;
+        public float VolumeBoostGain { get; set; } = 0.0f;
+        public bool SmartVolumeEnabled { get; set; } = false;
+        public float SmartVolumeLevel { get; set; } = 0.0f;
+
+        public bool ClearCastAiEnabled { get; set; } = true;
+        public float ClearCastSensitivity { get; set; } = 50.0f;
+        public bool NoiseReductionBackgroundEnabled { get; set; } = false;
+        public float NoiseReductionBackground { get; set; } = 0.0f;
+        public bool NoiseReductionImpactEnabled { get; set; } = false;
+        public float NoiseReductionImpact { get; set; } = 0.0f;
+        public bool NoiseGateEnabled { get; set; } = false;
+        public float NoiseGateThreshold { get; set; } = -60.0f;
+        public bool NoiseGateAuto { get; set; } = false;
+        public bool CompressorEnabled { get; set; } = false;
+        public float CompressorLevel { get; set; } = 0.0f;
+
+        public Dictionary<string, float[]> ChannelEqualizerBands { get; set; } = new();
+        public Dictionary<string, string> ChannelEqualizerPresets { get; set; } = new();
+
+        public Dictionary<string, string> AppChannelAssignments { get; set; } = new(); // processName -> channel ("game", "chat")
+    }
+
+    public class SpatialProfileSettings
+    {
+        public bool Enabled { get; set; } = false;
+        public string Mode { get; set; } = "Headphone"; // "Headphone" or "Speaker"
+        public float Tuning { get; set; } = 80.0f; // 0 (Performance) to 100 (Immersion)
+        public float Distance { get; set; } = 75.0f; // 0 to 100
         public float VolumeBoostGain { get; set; } = 0.0f; // 0.0 to 12.0 dB
         public bool SmartVolumeEnabled { get; set; } = false;
         public float SmartVolumeLevel { get; set; } = 0.0f; // 0.00 to 1.00
+    }
 
-        // ClearCast AI & Voice DSP (Chat & Mic profiles)
+    public class VoiceProfileSettings
+    {
         public bool ClearCastAiEnabled { get; set; } = true;
-        public float ClearCastSensitivity { get; set; } = 50.0f; // 0 to 100 (Min to Max)
+        public float ClearCastSensitivity { get; set; } = 50.0f; // 0 to 100
         public bool NoiseReductionBackgroundEnabled { get; set; } = false;
         public float NoiseReductionBackground { get; set; } = 0.0f; // 0.00 to 1.00
         public bool NoiseReductionImpactEnabled { get; set; } = false;
@@ -71,10 +114,5 @@ namespace NovaSonics.Models
         public bool NoiseGateAuto { get; set; } = false;
         public bool CompressorEnabled { get; set; } = false;
         public float CompressorLevel { get; set; } = 0.0f; // 0.00 to 1.00
-
-        public Dictionary<string, float[]> ChannelEqualizerBands { get; set; } = new();
-        public Dictionary<string, string> ChannelEqualizerPresets { get; set; } = new();
-
-        public Dictionary<string, string> AppChannelAssignments { get; set; } = new(); // processName -> channel ("game", "chat")
     }
 }

@@ -515,14 +515,14 @@
                             </TextBlock>
 
                             <!-- Background Slider -->
-                            <Grid Margin="0,0,0,8">
+                            <Grid Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="36" />
-                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="75" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="40" />
                                 </Grid.ColumnDefinitions>
-                                <CheckBox Grid.Column="0" Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding NoiseReductionBackgroundEnabled, Mode=TwoWay}"/>
+                                <CheckBox Grid.Column="0" Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding NoiseReductionBackgroundEnabled, Mode=TwoWay}" Margin="0,0,10,0"/>
                                 <TextBlock Grid.Column="1" Text="Background" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
                                 <Slider Grid.Column="2" Minimum="0.0" Maximum="1.0" Value="{Binding NoiseReductionBackground, Mode=TwoWay}" VerticalAlignment="Center"/>
                                 <TextBlock Grid.Column="3" Text="{Binding NoiseReductionBackground, Converter={StaticResource DecimalFormatConverter}}"
@@ -532,12 +532,12 @@
                             <!-- Impact Slider -->
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="36" />
-                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="75" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="40" />
                                 </Grid.ColumnDefinitions>
-                                <CheckBox Grid.Column="0" Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding NoiseReductionImpactEnabled, Mode=TwoWay}"/>
+                                <CheckBox Grid.Column="0" Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding NoiseReductionImpactEnabled, Mode=TwoWay}" Margin="0,0,10,0"/>
                                 <TextBlock Grid.Column="1" Text="Impact" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
                                 <Slider Grid.Column="2" Minimum="0.0" Maximum="1.0" Value="{Binding NoiseReductionImpact, Mode=TwoWay}" VerticalAlignment="Center"/>
                                 <TextBlock Grid.Column="3" Text="{Binding NoiseReductionImpact, Converter={StaticResource DecimalFormatConverter}}"

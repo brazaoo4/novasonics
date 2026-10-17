@@ -16,6 +16,7 @@ namespace NovaSonics.ViewModels
         private readonly IConfigService _configService;
         private readonly INotificationService _notificationService;
         private bool _isApplyingPreset;
+        private bool _isInternalProfileLoad;
 
         private static readonly string[] FrequencyLabels = new[]
         {
@@ -50,7 +51,7 @@ namespace NovaSonics.ViewModels
         [ObservableProperty]
         private bool _isSaving;
 
-        // Spatial Audio Properties (Game & Media)
+        // Spatial Audio Properties (Game & Media - Individual per profile)
         [ObservableProperty]
         private bool _spatialAudioEnabled;
 
@@ -78,7 +79,7 @@ namespace NovaSonics.ViewModels
         [ObservableProperty]
         private float _smartVolumeLevel = 0.0f;
 
-        // ClearCast AI & Voice DSP Properties (Chat & Mic)
+        // ClearCast AI & Voice DSP Properties (Chat & Mic - Individual per profile)
         [ObservableProperty]
         private bool _clearCastAiEnabled = true;
 
@@ -102,7 +103,9 @@ namespace NovaSonics.ViewModels
         partial void OnClearCastAiEnabledChanged(bool value)
         {
             OnPropertyChanged(nameof(IsNoiseReductionActive));
-            _configService.Config.ClearCastAiEnabled = value;
+            if (_isInternalProfileLoad) return;
+            var vp = GetVoiceSettings(SelectedProfile);
+            vp.ClearCastAiEnabled = value;
             _configService.Save();
         }
 
@@ -130,30 +133,6 @@ namespace NovaSonics.ViewModels
             _configService = configService;
             _notificationService = notificationService;
 
-            var cfg = _configService.Config;
-
-            _spatialAudioEnabled = cfg.SpatialAudioEnabled;
-            _spatialAudioMode = cfg.SpatialAudioMode ?? "Headphone";
-            _isHeadphoneMode = _spatialAudioMode == "Headphone";
-            _isSpeakerMode = !_isHeadphoneMode;
-            _spatialTuning = cfg.SpatialTuning;
-            _spatialDistance = cfg.SpatialDistance;
-            _volumeBoostGain = cfg.VolumeBoostGain;
-            _smartVolumeEnabled = cfg.SmartVolumeEnabled;
-            _smartVolumeLevel = cfg.SmartVolumeLevel;
-
-            _clearCastAiEnabled = cfg.ClearCastAiEnabled;
-            _clearCastSensitivity = cfg.ClearCastSensitivity;
-            _noiseReductionBackgroundEnabled = cfg.NoiseReductionBackgroundEnabled;
-            _noiseReductionBackground = cfg.NoiseReductionBackground;
-            _noiseReductionImpactEnabled = cfg.NoiseReductionImpactEnabled;
-            _noiseReductionImpact = cfg.NoiseReductionImpact;
-            _noiseGateEnabled = cfg.NoiseGateEnabled;
-            _noiseGateThreshold = cfg.NoiseGateThreshold;
-            _noiseGateAuto = cfg.NoiseGateAuto;
-            _compressorEnabled = cfg.CompressorEnabled;
-            _compressorLevel = cfg.CompressorLevel;
-
             for (int i = 0; i < 10; i++)
             {
                 var band = new EqualizerBandModel
@@ -168,8 +147,7 @@ namespace NovaSonics.ViewModels
                     {
                         if (SelectedPreset != "Custom")
                         {
-                            _selectedPreset = "Custom";
-                            OnPropertyChanged(nameof(SelectedPreset));
+                            SelectedPreset = "Custom";
                         }
                     }
                 };
@@ -177,6 +155,52 @@ namespace NovaSonics.ViewModels
             }
 
             LoadProfile("Game");
+        }
+
+        private SpatialProfileSettings GetSpatialSettings(string profile)
+        {
+            var cfg = _configService.Config;
+            cfg.SpatialProfiles ??= new();
+            if (!cfg.SpatialProfiles.TryGetValue(profile, out var sp))
+            {
+                sp = new SpatialProfileSettings
+                {
+                    Enabled = false,
+                    Mode = "Headphone",
+                    Tuning = (profile == "Game") ? 80.0f : 50.0f,
+                    Distance = 75.0f,
+                    VolumeBoostGain = 0.0f,
+                    SmartVolumeEnabled = false,
+                    SmartVolumeLevel = 0.0f
+                };
+                cfg.SpatialProfiles[profile] = sp;
+            }
+            return sp;
+        }
+
+        private VoiceProfileSettings GetVoiceSettings(string profile)
+        {
+            var cfg = _configService.Config;
+            cfg.VoiceProfiles ??= new();
+            if (!cfg.VoiceProfiles.TryGetValue(profile, out var vp))
+            {
+                vp = new VoiceProfileSettings
+                {
+                    ClearCastAiEnabled = true,
+                    ClearCastSensitivity = 50.0f,
+                    NoiseReductionBackgroundEnabled = false,
+                    NoiseReductionBackground = 0.0f,
+                    NoiseReductionImpactEnabled = false,
+                    NoiseReductionImpact = 0.0f,
+                    NoiseGateEnabled = false,
+                    NoiseGateThreshold = -60.0f,
+                    NoiseGateAuto = false,
+                    CompressorEnabled = false,
+                    CompressorLevel = 0.0f
+                };
+                cfg.VoiceProfiles[profile] = vp;
+            }
+            return vp;
         }
 
         [RelayCommand]
@@ -201,30 +225,22 @@ namespace NovaSonics.ViewModels
             OnPropertyChanged(nameof(IsGameOrMedia));
             OnPropertyChanged(nameof(IsChatOrMic));
 
+            // Load presets list for selected profile
             AvailablePresets.Clear();
-            List<string> presets;
-            switch (profile)
+            List<string> presets = profile switch
             {
-                case "Media":
-                    presets = new List<string> { "Movie Immersion", "Music Bass", "Vocal Clarity", "Flat", "Custom" };
-                    break;
-                case "Chat":
-                    presets = new List<string> { "Voice Clarity", "Warm Voice", "Podcast", "Flat", "Custom" };
-                    break;
-                case "Mic":
-                    presets = new List<string> { "Broadcast", "Deep Voice", "Balanced", "Flat", "Custom" };
-                    break;
-                case "Game":
-                default:
-                    presets = new List<string> { "Smiley (FPS)", "Deep Bass", "Focus / Footsteps", "Flat", "Custom" };
-                    break;
-            }
+                "Media" => new List<string> { "Movie Immersion", "Music Bass", "Vocal Clarity", "Flat", "Custom" },
+                "Chat" => new List<string> { "Voice Clarity", "Warm Voice", "Podcast", "Flat", "Custom" },
+                "Mic" => new List<string> { "Broadcast", "Deep Voice", "Balanced", "Flat", "Custom" },
+                _ => new List<string> { "Smiley (FPS)", "Deep Bass", "Focus / Footsteps", "Flat", "Custom" }
+            };
 
             foreach (var p in presets)
             {
                 AvailablePresets.Add(p);
             }
 
+            // Load EQ bands
             float[]? saved = null;
             if (_configService.Config.ChannelEqualizerBands.TryGetValue(profile, out var b))
             {
@@ -261,6 +277,42 @@ namespace NovaSonics.ViewModels
             else
             {
                 ApplyPresetValues(SelectedPreset);
+            }
+
+            // Load Individual Spatial Audio settings if Game or Media
+            if (IsGameOrMedia)
+            {
+                var sp = GetSpatialSettings(profile);
+                _isInternalProfileLoad = true;
+                SpatialAudioEnabled = sp.Enabled;
+                SpatialAudioMode = sp.Mode;
+                IsHeadphoneMode = sp.Mode == "Headphone";
+                IsSpeakerMode = !IsHeadphoneMode;
+                SpatialTuning = sp.Tuning;
+                SpatialDistance = sp.Distance;
+                VolumeBoostGain = sp.VolumeBoostGain;
+                SmartVolumeEnabled = sp.SmartVolumeEnabled;
+                SmartVolumeLevel = sp.SmartVolumeLevel;
+                _isInternalProfileLoad = false;
+            }
+            // Load Individual ClearCast Voice settings if Chat or Mic
+            else if (IsChatOrMic)
+            {
+                var vp = GetVoiceSettings(profile);
+                _isInternalProfileLoad = true;
+                ClearCastAiEnabled = vp.ClearCastAiEnabled;
+                ClearCastSensitivity = vp.ClearCastSensitivity;
+                NoiseReductionBackgroundEnabled = vp.NoiseReductionBackgroundEnabled;
+                NoiseReductionBackground = vp.NoiseReductionBackground;
+                NoiseReductionImpactEnabled = vp.NoiseReductionImpactEnabled;
+                NoiseReductionImpact = vp.NoiseReductionImpact;
+                NoiseGateEnabled = vp.NoiseGateEnabled;
+                NoiseGateThreshold = vp.NoiseGateThreshold;
+                NoiseGateAuto = vp.NoiseGateAuto;
+                CompressorEnabled = vp.CompressorEnabled;
+                CompressorLevel = vp.CompressorLevel;
+                _isInternalProfileLoad = false;
+                OnPropertyChanged(nameof(IsNoiseReductionActive));
             }
         }
 
@@ -303,8 +355,11 @@ namespace NovaSonics.ViewModels
             SpatialAudioMode = "Headphone";
             IsHeadphoneMode = true;
             IsSpeakerMode = false;
-            _configService.Config.SpatialAudioMode = "Headphone";
-            _configService.Save();
+            if (IsGameOrMedia)
+            {
+                GetSpatialSettings(SelectedProfile).Mode = "Headphone";
+                _configService.Save();
+            }
         }
 
         [RelayCommand]
@@ -313,104 +368,171 @@ namespace NovaSonics.ViewModels
             SpatialAudioMode = "Speaker";
             IsHeadphoneMode = false;
             IsSpeakerMode = true;
-            _configService.Config.SpatialAudioMode = "Speaker";
-            _configService.Save();
+            if (IsGameOrMedia)
+            {
+                GetSpatialSettings(SelectedProfile).Mode = "Speaker";
+                _configService.Save();
+            }
         }
 
         partial void OnSpatialAudioEnabledChanged(bool value)
         {
-            _configService.Config.SpatialAudioEnabled = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsGameOrMedia)
+            {
+                GetSpatialSettings(SelectedProfile).Enabled = value;
+                _configService.Save();
+            }
         }
 
         partial void OnSpatialTuningChanged(float value)
         {
-            _configService.Config.SpatialTuning = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsGameOrMedia)
+            {
+                GetSpatialSettings(SelectedProfile).Tuning = value;
+                _configService.Save();
+            }
         }
 
         partial void OnSpatialDistanceChanged(float value)
         {
-            _configService.Config.SpatialDistance = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsGameOrMedia)
+            {
+                GetSpatialSettings(SelectedProfile).Distance = value;
+                _configService.Save();
+            }
         }
 
         partial void OnVolumeBoostGainChanged(float value)
         {
-            _configService.Config.VolumeBoostGain = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsGameOrMedia)
+            {
+                GetSpatialSettings(SelectedProfile).VolumeBoostGain = value;
+                _configService.Save();
+            }
         }
 
         partial void OnSmartVolumeEnabledChanged(bool value)
         {
-            _configService.Config.SmartVolumeEnabled = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsGameOrMedia)
+            {
+                GetSpatialSettings(SelectedProfile).SmartVolumeEnabled = value;
+                _configService.Save();
+            }
         }
 
         partial void OnSmartVolumeLevelChanged(float value)
         {
-            _configService.Config.SmartVolumeLevel = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsGameOrMedia)
+            {
+                GetSpatialSettings(SelectedProfile).SmartVolumeLevel = value;
+                _configService.Save();
+            }
         }
 
         partial void OnClearCastSensitivityChanged(float value)
         {
-            _configService.Config.ClearCastSensitivity = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsChatOrMic)
+            {
+                GetVoiceSettings(SelectedProfile).ClearCastSensitivity = value;
+                _configService.Save();
+            }
         }
 
         partial void OnNoiseReductionBackgroundEnabledChanged(bool value)
         {
-            _configService.Config.NoiseReductionBackgroundEnabled = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsChatOrMic)
+            {
+                GetVoiceSettings(SelectedProfile).NoiseReductionBackgroundEnabled = value;
+                _configService.Save();
+            }
         }
 
         partial void OnNoiseReductionBackgroundChanged(float value)
         {
-            _configService.Config.NoiseReductionBackground = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsChatOrMic)
+            {
+                GetVoiceSettings(SelectedProfile).NoiseReductionBackground = value;
+                _configService.Save();
+            }
         }
 
         partial void OnNoiseReductionImpactEnabledChanged(bool value)
         {
-            _configService.Config.NoiseReductionImpactEnabled = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsChatOrMic)
+            {
+                GetVoiceSettings(SelectedProfile).NoiseReductionImpactEnabled = value;
+                _configService.Save();
+            }
         }
 
         partial void OnNoiseReductionImpactChanged(float value)
         {
-            _configService.Config.NoiseReductionImpact = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsChatOrMic)
+            {
+                GetVoiceSettings(SelectedProfile).NoiseReductionImpact = value;
+                _configService.Save();
+            }
         }
 
         partial void OnNoiseGateEnabledChanged(bool value)
         {
-            _configService.Config.NoiseGateEnabled = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsChatOrMic)
+            {
+                GetVoiceSettings(SelectedProfile).NoiseGateEnabled = value;
+                _configService.Save();
+            }
         }
 
         partial void OnNoiseGateThresholdChanged(float value)
         {
-            _configService.Config.NoiseGateThreshold = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsChatOrMic)
+            {
+                GetVoiceSettings(SelectedProfile).NoiseGateThreshold = value;
+                _configService.Save();
+            }
         }
 
         partial void OnNoiseGateAutoChanged(bool value)
         {
-            _configService.Config.NoiseGateAuto = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsChatOrMic)
+            {
+                GetVoiceSettings(SelectedProfile).NoiseGateAuto = value;
+                _configService.Save();
+            }
         }
 
         partial void OnCompressorEnabledChanged(bool value)
         {
-            _configService.Config.CompressorEnabled = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsChatOrMic)
+            {
+                GetVoiceSettings(SelectedProfile).CompressorEnabled = value;
+                _configService.Save();
+            }
         }
 
         partial void OnCompressorLevelChanged(float value)
         {
-            _configService.Config.CompressorLevel = value;
-            _configService.Save();
+            if (_isInternalProfileLoad) return;
+            if (IsChatOrMic)
+            {
+                GetVoiceSettings(SelectedProfile).CompressorLevel = value;
+                _configService.Save();
+            }
         }
 
         [RelayCommand]

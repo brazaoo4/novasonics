@@ -6,141 +6,306 @@
              xmlns:vm="clr-namespace:NovaSonics.ViewModels"
              mc:Ignorable="d" 
              d:DataContext="{d:DesignInstance Type=vm:HardwareViewModel}"
-             d:DesignHeight="700" d:DesignWidth="1000"
+             d:DesignHeight="850" d:DesignWidth="1000"
              Background="Transparent">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="24" MaxWidth="800" HorizontalAlignment="Left">
+    <UserControl.Resources>
+        <!-- Sonar Style Pill Toggle Switch -->
+        <Style x:Key="SonarToggleSwitch" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Grid Width="40" Height="22">
+                                <Border x:Name="Track" Background="#262A34" CornerRadius="11" BorderBrush="#363C4A" BorderThickness="1" />
+                                <Ellipse x:Name="Thumb" Width="16" Height="16" Fill="#94A3B8" HorizontalAlignment="Left" Margin="3,0,0,0" />
+                            </Grid>
+                            <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="#00E5FF" />
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#38BDF8" />
+                                <Setter TargetName="Thumb" Property="Fill" Value="#0F172A" />
+                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
 
-            <TextBlock Text="Hardware Settings &amp; Backup" FontSize="20" FontWeight="Bold" Foreground="#F8FAFC"/>
-            <TextBlock Text="Configure headset firmware settings over USB HID and manage application backups." FontSize="12" Foreground="#94A3B8" Margin="0,4,0,24"/>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="20">
+        <StackPanel MaxWidth="960" HorizontalAlignment="Stretch">
+
+            <!-- Title & Description Header -->
+            <Border Background="#181A20" CornerRadius="8" Padding="18,14" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="⚙️ Settings &amp; Hardware Management" FontSize="16" FontWeight="Black" Foreground="#00E5FF"/>
+                            <Border Background="#1E3A5F" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="Arctis Nova 7 Standalone" FontSize="10" FontWeight="Bold" Foreground="#38BDF8"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Text="Configure onboard headset EEPROM registers over direct USB HID, customize battery warning thresholds, and manage backups."
+                                   FontSize="11" Foreground="#94A3B8"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
 
             <!-- 1. Low Battery Toast Alert (30% Pre-Beep Alert) -->
-            <Border Background="#1C1F26" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
+            <Border Background="#181A20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
                 <StackPanel>
-                    <TextBlock Text="🔋 30% Low-Battery Pre-Beep Alert" FontSize="14" FontWeight="Bold" Foreground="#F59E0B"/>
-                    <TextBlock Text="SteelSeries firmware triggers an unmutable hardware beep at 20-25% battery. NovaSonics monitors battery over HID and alerts you at 30% so you can plug in without interruption."
-                               FontSize="12" Foreground="#94A3B8" TextWrapping="Wrap" Margin="0,4,0,12"/>
-
-                    <Grid Margin="0,6,0,12">
+                    <Grid Margin="0,0,0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Slider Minimum="10" Maximum="50" Value="{Binding BatteryAlertThreshold, Mode=TwoWay}"
-                                TickPlacement="BottomRight" TickFrequency="5" IsSnapToTickEnabled="True"/>
-                        <TextBlock Grid.Column="1" Text="{Binding BatteryAlertThreshold, StringFormat='{}Threshold: {0}%'}"
-                                   FontWeight="Bold" Foreground="#F59E0B" Margin="16,0,0,0" VerticalAlignment="Center"/>
+
+                        <StackPanel Grid.Column="0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                <TextBlock Text="🔋 LOW-BATTERY PRE-BEEP ALERT" FontSize="13" FontWeight="Black" Foreground="#F59E0B"/>
+                                <TextBlock Text=" ⓘ" FontSize="11" Foreground="#64748B" VerticalAlignment="Center"
+                                           ToolTip="SteelSeries firmware triggers an unmutable hardware beep at 20-25% battery. NovaSonics alerts you in advance via Windows Toast notification."/>
+                            </StackPanel>
+                            <TextBlock Text="Receive a Windows desktop notification before the headset hardware begins emitting unmutable beeps."
+                                       FontSize="11" Foreground="#94A3B8"/>
+                        </StackPanel>
+
+                        <!-- Live Threshold Badge -->
+                        <Border Grid.Column="1" Background="#261E14" CornerRadius="6" Padding="10,5" BorderBrush="#F59E0B" BorderThickness="1" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding BatteryAlertThreshold, StringFormat='{}🔔 Alert at: {0}%'}" FontWeight="Bold" FontSize="12" Foreground="#F59E0B"/>
+                        </Border>
                     </Grid>
 
-                    <Button Content="Test Notification" Command="{Binding TestNotificationCommand}"
-                            Padding="12,6" Background="#1E293B" BorderBrush="#334155" HorizontalAlignment="Left" Foreground="#F8FAFC"/>
+                    <Grid Margin="0,6,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Slider Grid.Column="0" Minimum="10" Maximum="50" Value="{Binding BatteryAlertThreshold, Mode=TwoWay}"
+                                TickPlacement="BottomRight" TickFrequency="5" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                                Height="28"/>
+
+                        <Button Grid.Column="1" Command="{Binding TestNotificationCommand}" Margin="16,0,0,0"
+                                Padding="14,8" Background="#1E222B" BorderBrush="#334155" Foreground="#F8FAFC" FontWeight="SemiBold"
+                                ToolTip="Send a test Windows Toast notification">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🔔 Test Notification" FontSize="11" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
                 </StackPanel>
             </Border>
 
-            <!-- 2. Arctis Nova 7 Hardware Controls -->
-            <Border Background="#1C1F26" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
+            <!-- 2. Arctis Nova 7 Hardware Controls (USB HID + Flash Save 0x09) -->
+            <Border Background="#181A20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
                 <StackPanel>
-                    <TextBlock Text="🎛️ Headset Hardware Controls (USB HID + Flash Save 0x09)" FontSize="14" FontWeight="Bold" Foreground="#00E5FF"/>
-                    <TextBlock Text="These commands configure internal Nova 7 non-volatile EEPROM registers directly over USB HID."
-                               FontSize="12" Foreground="#94A3B8" Margin="0,4,0,16"/>
-
-                    <Grid Margin="0,6">
+                    <Grid Margin="0,0,0,16">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
                             <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Sidetone (0x39) -->
-                        <TextBlock Grid.Column="0" Text="Sidetone (Mic Monitoring):" Foreground="#E2E8F0" VerticalAlignment="Center" FontSize="12"/>
-                        <ComboBox Grid.Column="1" SelectedIndex="{Binding SidetoneLevel, Mode=TwoWay}" Width="200" HorizontalAlignment="Left">
-                            <ComboBoxItem Content="0 - Off" />
-                            <ComboBoxItem Content="1 - Low" />
-                            <ComboBoxItem Content="2 - Medium" />
-                            <ComboBoxItem Content="3 - High" />
-                        </ComboBox>
-                    </Grid>
-
-                    <Grid Margin="0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Inactive Sleep Timer (0xA3) -->
-                        <TextBlock Grid.Column="0" Text="Inactive Sleep Timer:" Foreground="#E2E8F0" VerticalAlignment="Center" FontSize="12"/>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding InactiveTimerMinutes, Mode=TwoWay}" Width="200">
-                                <ComboBoxItem Content="Never" Tag="0" />
-                                <ComboBoxItem Content="5 Minutes" Tag="5" />
-                                <ComboBoxItem Content="15 Minutes" Tag="15" />
-                                <ComboBoxItem Content="30 Minutes" Tag="30" />
-                                <ComboBoxItem Content="60 Minutes" Tag="60" />
-                            </ComboBox>
-                        </StackPanel>
-                    </Grid>
-
-                    <Grid Margin="0,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Mic Muted LED Brightness (0xAE) -->
-                        <TextBlock Grid.Column="0" Text="Muted Mic LED Brightness:" Foreground="#E2E8F0" VerticalAlignment="Center" FontSize="12"/>
-                        <ComboBox Grid.Column="1" SelectedIndex="{Binding MicMuteBrightness, Mode=TwoWay}" Width="200" HorizontalAlignment="Left">
-                            <ComboBoxItem Content="0 - Off" />
-                            <ComboBoxItem Content="1 - Low" />
-                            <ComboBoxItem Content="2 - Medium" />
-                            <ComboBoxItem Content="3 - High" />
-                        </ComboBox>
-                    </Grid>
-
-                    <Grid Margin="0,10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="200" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- Hardware Mic Gain (0x37) -->
-                        <TextBlock Grid.Column="0" Text="On-Headset Mic Gain (0-7):" Foreground="#E2E8F0" VerticalAlignment="Center" FontSize="12"/>
-                        <Slider Grid.Column="1" Minimum="0" Maximum="7" Value="{Binding HardwareMicVolume, Mode=TwoWay}"
-                                TickPlacement="BottomRight" TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Column="2" Text="{Binding HardwareMicVolume, StringFormat='{}Level {0} / 7'}"
-                                   Foreground="#00E5FF" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
+                        <StackPanel Grid.Column="0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                <TextBlock Text="🎛️ HEADSET HARDWARE CONTROLS" FontSize="13" FontWeight="Black" Foreground="#00E5FF"/>
+                                <Border Background="#1E293B" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="EEPROM Flash (0x09)" FontSize="10" FontWeight="Bold" Foreground="#00E5FF"/>
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="Configures non-volatile registers inside the Nova 7 DAC over USB HID. Settings persist across reboots, consoles, and Bluetooth mode."
+                                       FontSize="11" Foreground="#94A3B8"/>
+                        </StackPanel>
                     </Grid>
 
-                    <Grid Margin="0,6">
+                    <!-- 2-Column Responsive Grid of Hardware Controls -->
+                    <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="24" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- EU Volume Limiter (0x3A) -->
-                        <TextBlock Grid.Column="0" Text="Volume Limiter (99 dB Max):" Foreground="#E2E8F0" VerticalAlignment="Center" FontSize="12"/>
-                        <CheckBox Grid.Column="1" Content="Enable EU Volume Limiter (uncheck for 105 dB max output)"
-                                  IsChecked="{Binding VolumeLimiterEnabled, Mode=TwoWay}" VerticalAlignment="Center"/>
+                        <!-- LEFT COLUMN: Sidetone, Inactive Timer, Mute LED -->
+                        <StackPanel Grid.Column="0">
+                            <!-- Sidetone (Mic Monitoring) -->
+                            <Border Background="#14161C" CornerRadius="6" Padding="14,12" Margin="0,0,0,10" BorderBrush="#252A36" BorderThickness="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="130" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="Sidetone (Mic Monitoring)" FontWeight="Bold" FontSize="12" Foreground="#E2E8F0"/>
+                                        <TextBlock Text="Zero-latency feedback of your own voice" FontSize="10" Foreground="#64748B" Margin="0,2,0,0"/>
+                                    </StackPanel>
+
+                                    <ComboBox Grid.Column="1" SelectedIndex="{Binding SidetoneLevel, Mode=TwoWay}" Height="28" FontSize="11">
+                                        <ComboBoxItem Content="0 - Off" />
+                                        <ComboBoxItem Content="1 - Low" />
+                                        <ComboBoxItem Content="2 - Medium" />
+                                        <ComboBoxItem Content="3 - High" />
+                                    </ComboBox>
+                                </Grid>
+                            </Border>
+
+                            <!-- Inactive Sleep Timer -->
+                            <Border Background="#14161C" CornerRadius="6" Padding="14,12" Margin="0,0,0,10" BorderBrush="#252A36" BorderThickness="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="130" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="Inactive Sleep Timer" FontWeight="Bold" FontSize="12" Foreground="#E2E8F0"/>
+                                        <TextBlock Text="Auto shutoff when no audio stream plays" FontSize="10" Foreground="#64748B" Margin="0,2,0,0"/>
+                                    </StackPanel>
+
+                                    <ComboBox Grid.Column="1" SelectedValuePath="Tag" SelectedValue="{Binding InactiveTimerMinutes, Mode=TwoWay}" Height="28" FontSize="11">
+                                        <ComboBoxItem Content="Never" Tag="0" />
+                                        <ComboBoxItem Content="5 Minutes" Tag="5" />
+                                        <ComboBoxItem Content="15 Minutes" Tag="15" />
+                                        <ComboBoxItem Content="30 Minutes" Tag="30" />
+                                        <ComboBoxItem Content="60 Minutes" Tag="60" />
+                                    </ComboBox>
+                                </Grid>
+                            </Border>
+
+                            <!-- Muted Mic LED Brightness -->
+                            <Border Background="#14161C" CornerRadius="6" Padding="14,12" BorderBrush="#252A36" BorderThickness="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="130" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="Muted Mic LED Brightness" FontWeight="Bold" FontSize="12" Foreground="#E2E8F0"/>
+                                        <TextBlock Text="Red LED indicator on microphone capsule" FontSize="10" Foreground="#64748B" Margin="0,2,0,0"/>
+                                    </StackPanel>
+
+                                    <ComboBox Grid.Column="1" SelectedIndex="{Binding MicMuteBrightness, Mode=TwoWay}" Height="28" FontSize="11">
+                                        <ComboBoxItem Content="0 - Off" />
+                                        <ComboBoxItem Content="1 - Low" />
+                                        <ComboBoxItem Content="2 - Medium" />
+                                        <ComboBoxItem Content="3 - High" />
+                                    </ComboBox>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- RIGHT COLUMN: Hardware Mic Gain & EU Limiter -->
+                        <StackPanel Grid.Column="2">
+                            <!-- On-Headset Hardware Mic Gain -->
+                            <Border Background="#14161C" CornerRadius="6" Padding="14,12" Margin="0,0,0,10" BorderBrush="#252A36" BorderThickness="1">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="On-Headset Hardware Mic Gain" FontWeight="Bold" FontSize="12" Foreground="#E2E8F0"/>
+                                            <TextBlock Text="Onboard analog capsule preamplification (0-7)" FontSize="10" Foreground="#64748B" Margin="0,2,0,0"/>
+                                        </StackPanel>
+
+                                        <Border Grid.Column="1" Background="#1E293B" CornerRadius="4" Padding="6,2" BorderBrush="#00E5FF" BorderThickness="1">
+                                            <TextBlock Text="{Binding HardwareMicVolume, StringFormat='{}Level {0} / 7'}"
+                                                       Foreground="#00E5FF" FontWeight="Bold" FontSize="11"/>
+                                        </Border>
+                                    </Grid>
+
+                                    <Slider Minimum="0" Maximum="7" Value="{Binding HardwareMicVolume, Mode=TwoWay}"
+                                            TickPlacement="BottomRight" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            VerticalAlignment="Center" Height="26"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- EU Volume Limiter (99 dB Max) -->
+                            <Border Background="#14161C" CornerRadius="6" Padding="14,12" BorderBrush="#252A36" BorderThickness="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="EU Volume Limiter (99 dB Cap)" FontWeight="Bold" FontSize="12" Foreground="#E2E8F0"/>
+                                        <TextBlock Text="Uncheck to unlock maximum 105 dB dynamic range output" FontSize="10" Foreground="#64748B" Margin="0,2,0,0"/>
+                                    </StackPanel>
+
+                                    <CheckBox Grid.Column="1" Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding VolumeLimiterEnabled, Mode=TwoWay}"
+                                              VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
                     </Grid>
                 </StackPanel>
             </Border>
 
             <!-- 3. Backup, Restore & Startup -->
-            <Border Background="#1C1F26" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
+            <Border Background="#181A20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
                 <StackPanel>
-                    <TextBlock Text="💾 Portable Backup &amp; System Integration" FontSize="14" FontWeight="Bold" Foreground="#10B981"/>
-                    <TextBlock Text="All volumes, priority orders, and app channel assignments are stored in a human-readable config.json file."
-                               FontSize="12" Foreground="#94A3B8" Margin="0,4,0,16"/>
+                    <Grid Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                        <Button Content="Export Settings (JSON)" Command="{Binding ExportSettingsCommand}"
-                                Padding="14,8" Background="#065F46" BorderBrush="#047857" Foreground="#ECFDF5" FontWeight="SemiBold" Margin="0,0,12,0"/>
-                        <Button Content="Import Settings (JSON)" Command="{Binding ImportSettingsCommand}"
-                                Padding="14,8" Background="#1E293B" BorderBrush="#334155" Foreground="#F8FAFC" FontWeight="SemiBold"/>
-                    </StackPanel>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="💾 PORTABLE BACKUP &amp; SYSTEM INTEGRATION" FontSize="13" FontWeight="Black" Foreground="#10B981"/>
+                            <TextBlock Text="All volume balances, EQ presets, channel mappings, and priority rules are stored in a human-readable config.json file."
+                                       FontSize="11" Foreground="#94A3B8" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </Grid>
 
-                    <CheckBox Content="Start Minimized to System Tray with Windows" IsChecked="{Binding StartMinimizedToTray}"
-                              Foreground="#E2E8F0" FontSize="12"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Export / Import Buttons -->
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Command="{Binding ExportSettingsCommand}" Padding="14,8" Background="#065F46" BorderBrush="#059669"
+                                    Foreground="#ECFDF5" FontWeight="Bold" Margin="0,0,10,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="📤 Export Settings (JSON)" FontSize="11"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Command="{Binding ImportSettingsCommand}" Padding="14,8" Background="#1E222B" BorderBrush="#334155"
+                                    Foreground="#F8FAFC" FontWeight="SemiBold">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="📥 Import Settings (JSON)" FontSize="11"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- Autostart Switch -->
+                        <Border Grid.Column="1" Background="#14161C" CornerRadius="6" Padding="12,8" BorderBrush="#252A36" BorderThickness="1" VerticalAlignment="Center">
+                            <CheckBox Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding StartMinimizedToTray, Mode=TwoWay}">
+                                <StackPanel>
+                                    <TextBlock Text="Start Minimized to Tray" FontWeight="SemiBold" FontSize="11" Foreground="#E2E8F0"/>
+                                    <TextBlock Text="Run on Windows startup" FontSize="9" Foreground="#64748B"/>
+                                </StackPanel>
+                            </CheckBox>
+                        </Border>
+                    </Grid>
                 </StackPanel>
             </Border>
 
