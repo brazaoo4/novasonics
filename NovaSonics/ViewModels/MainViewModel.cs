@@ -121,8 +121,10 @@ namespace NovaSonics.ViewModels
         }
 
         [RelayCommand]
-        public void SelectTab(int index)
+        public void SelectTab(object? parameter)
         {
+            if (parameter == null) return;
+            int index = Convert.ToInt32(parameter);
             SelectedTabIndex = index;
             if (index == 0)
             {

@@ -210,11 +210,17 @@ namespace NovaSonics
         private void UpdateTrayIconAndTooltip()
         {
             if (_notifyIcon == null) return;
-            var hs = _viewModel.HeadsetStatus;
-            string state = hs.IsHeadsetOnline ? "Online" : "Offline";
-            string charging = hs.IsCharging ? " ⚡" : "";
-            _notifyIcon.Text = $"NovaSonics: {state} | 🔋 {hs.BatteryPercent}%{charging}";
-            RenderTrayIcon(hs.IsHeadsetOnline, hs.BatteryPercent);
+            try
+            {
+                var hs = _viewModel.HeadsetStatus;
+                string state = hs.IsHeadsetOnline ? "Online" : "Offline";
+                string charging = hs.IsCharging ? " [⚡]" : "";
+                string tip = $"NovaSonics: {state} | {hs.BatteryPercent}%{charging}";
+                if (tip.Length > 63) tip = tip[..63];
+                _notifyIcon.Text = tip;
+                RenderTrayIcon(hs.IsHeadsetOnline, hs.BatteryPercent);
+            }
+            catch { }
         }
 
         private void ToggleWindow()
