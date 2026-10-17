@@ -139,7 +139,7 @@ namespace NovaSonics.Services
 
             string[] builtInChat = { "Discord", "TeamSpeak3", "ts3client_win64", "Zoom", "Teams", "ms-teams", "Slack", "Skype", "Mumble", "Ventrilo" };
             foreach (var c in builtInChat) _defaultChatProcesses.Add(c);
-            string[] builtInGame = { "chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "Spotify", "vlc" };
+            string[] builtInGame = { "chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "Spotify", "vlc", "steam", "steamwebhelper", "epicgameslauncher", "gog_galaxy", "eadesktop", "battlenet", "riotclientux" };
             foreach (var g in builtInGame) _defaultGameProcesses.Add(g);
         }
 
@@ -212,8 +212,28 @@ namespace NovaSonics.Services
                     for (int i = 0; i < sessions.Count; i++)
                     {
                         var s = sessions[i];
+                        if (s.IsSystemSoundsSession)
+                        {
+                            string sysProc = "SystemSounds";
+                            if (!currentModels.ContainsKey(sysProc))
+                            {
+                                var channel = DetermineChannelForProcess(sysProc);
+                                currentModels[sysProc] = new AppSessionModel
+                                {
+                                    ProcessId = 0,
+                                    ProcessName = sysProc,
+                                    DisplayName = "System Sounds & Notifications",
+                                    Icon = null,
+                                    Channel = channel,
+                                    Volume = s.SimpleAudioVolume.Volume,
+                                    IsMuted = s.SimpleAudioVolume.Mute
+                                };
+                            }
+                            continue;
+                        }
+
                         int pid = (int)s.GetProcessID;
-                        if (pid == 0 || s.IsSystemSoundsSession) continue;
+                        if (pid == 0) continue;
 
                         string procName = string.Empty;
                         string displayName = s.DisplayName;
@@ -312,11 +332,8 @@ namespace NovaSonics.Services
             if (_defaultChatProcesses.Contains(processName))
                 return AppChannel.Chat;
 
-            if (_defaultGameProcesses.Contains(processName))
-                return AppChannel.Game;
-
-            // Unclassified processes start in "Apps to be routed" (Master column)
-            return AppChannel.Master;
+            // Default all games, launchers, media, and system notifications to Game channel (identical to Sonar)
+            return AppChannel.Game;
         }
 
         public void SetAppChannel(AppSessionModel session, AppChannel channel)
@@ -367,28 +384,45 @@ namespace NovaSonics.Services
                     for (int i = 0; i < sessions.Count; i++)
                     {
                         var s = sessions[i];
-                        int pid = (int)s.GetProcessID;
-                        if (pid == 0 || s.IsSystemSoundsSession) continue;
-
-                        var model = ActiveSessions.FirstOrDefault(a => a.ProcessId == pid);
-                        if (model == null)
+                        if (s.IsSystemSoundsSession)
                         {
-                            try
+                            var model = ActiveSessions.FirstOrDefault(a => a.ProcessName.Equals("SystemSounds", StringComparison.OrdinalIgnoreCase));
+                            var channel = model?.Channel ?? AppChannel.Game;
+                            if (channel == AppChannel.Game)
                             {
-                                using var proc = Process.GetProcessById(pid);
-                                model = ActiveSessions.FirstOrDefault(a => a.ProcessName.Equals(proc.ProcessName, StringComparison.OrdinalIgnoreCase));
+                                s.SimpleAudioVolume.Volume = effectiveGameVol;
+                                s.SimpleAudioVolume.Mute = GameMuted || MasterMuted;
                             }
-                            catch { }
-                        }
-
-                        if (model != null)
-                        {
-                            if (model.Channel == AppChannel.Chat)
+                            else if (channel == AppChannel.Chat)
                             {
                                 s.SimpleAudioVolume.Volume = effectiveChatVol;
                                 s.SimpleAudioVolume.Mute = ChatMuted || MasterMuted;
                             }
-                            else if (model.Channel == AppChannel.Game)
+                            continue;
+                        }
+
+                        int pid = (int)s.GetProcessID;
+                        if (pid == 0) continue;
+
+                        var modelApp = ActiveSessions.FirstOrDefault(a => a.ProcessId == pid);
+                        if (modelApp == null)
+                        {
+                            try
+                            {
+                                using var proc = Process.GetProcessById(pid);
+                                modelApp = ActiveSessions.FirstOrDefault(a => a.ProcessName.Equals(proc.ProcessName, StringComparison.OrdinalIgnoreCase));
+                            }
+                            catch { }
+                        }
+
+                        if (modelApp != null)
+                        {
+                            if (modelApp.Channel == AppChannel.Chat)
+                            {
+                                s.SimpleAudioVolume.Volume = effectiveChatVol;
+                                s.SimpleAudioVolume.Mute = ChatMuted || MasterMuted;
+                            }
+                            else if (modelApp.Channel == AppChannel.Game)
                             {
                                 s.SimpleAudioVolume.Volume = effectiveGameVol;
                                 s.SimpleAudioVolume.Mute = GameMuted || MasterMuted;
@@ -417,10 +451,25 @@ namespace NovaSonics.Services
                         for (int i = 0; i < sessions.Count; i++)
                         {
                             var s = sessions[i];
-                            int pid = (int)s.GetProcessID;
-                            if (pid == 0 || s.IsSystemSoundsSession) continue;
+                            float peak = 0f;
+                            try { peak = s.AudioMeterInformation.MasterPeakValue; } catch { }
 
-                            float peak = s.AudioMeterInformation.MasterPeakValue;
+                            if (s.IsSystemSoundsSession)
+                            {
+                                var model = ActiveSessions.FirstOrDefault(a => a.ProcessName.Equals("SystemSounds", StringComparison.OrdinalIgnoreCase));
+                                if (model != null)
+                                {
+                                    model.PeakValue = peak;
+                                    var channel = model.Channel;
+                                    if (channel == AppChannel.Game && peak > maxGamePeak) maxGamePeak = peak;
+                                    else if (channel == AppChannel.Chat && peak > maxChatPeak) maxChatPeak = peak;
+                                }
+                                continue;
+                            }
+
+                            int pid = (int)s.GetProcessID;
+                            if (pid == 0) continue;
+
                             var app = ActiveSessions.FirstOrDefault(a => a.ProcessId == pid);
                             if (app != null)
                             {
