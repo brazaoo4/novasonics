@@ -2,7 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace NovaSonics.Models
 {
-    public partial class AudioDeviceModel : ObservableObject
+    public partial class AudioDeviceModel : ObservableObject, System.IEquatable<AudioDeviceModel>
     {
         [ObservableProperty]
         private string _id = string.Empty;
@@ -34,5 +34,15 @@ namespace NovaSonics.Models
         public bool IsNovaHeadset => (Name.Contains("Nova 7", System.StringComparison.OrdinalIgnoreCase) ||
                                       Description.Contains("Nova 7", System.StringComparison.OrdinalIgnoreCase)) &&
                                      !Name.Contains("SteelSeries Sonar", System.StringComparison.OrdinalIgnoreCase);
+
+        public override bool Equals(object? obj) => obj is AudioDeviceModel other && Equals(other);
+
+        public bool Equals(AudioDeviceModel? other) =>
+            other is not null && string.Equals(Id, other.Id, System.StringComparison.OrdinalIgnoreCase);
+
+        public override int GetHashCode() =>
+            !string.IsNullOrEmpty(Id) ? System.StringComparer.OrdinalIgnoreCase.GetHashCode(Id) : 0;
+
+        public override string ToString() => Name;
     }
 }

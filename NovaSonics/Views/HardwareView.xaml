@@ -257,56 +257,58 @@
                 </StackPanel>
             </Border>
 
-            <!-- 3. Backup, Restore & Startup -->
+            <!-- 3. Portable Backup & Restore -->
             <Border Background="#181A20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
                 <StackPanel>
                     <Grid Margin="0,0,0,14">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="💾 PORTABLE BACKUP &amp; SYSTEM INTEGRATION" FontSize="13" FontWeight="Black" Foreground="#10B981"/>
+                        <StackPanel>
+                            <TextBlock Text="💾 PORTABLE BACKUP &amp; RESTORE" FontSize="13" FontWeight="Black" Foreground="#10B981"/>
                             <TextBlock Text="All volume balances, EQ presets, channel mappings, and priority rules are stored in a human-readable config.json file."
                                        FontSize="11" Foreground="#94A3B8" Margin="0,3,0,0"/>
                         </StackPanel>
                     </Grid>
 
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Command="{Binding ExportSettingsCommand}" Padding="14,8" Background="#065F46" BorderBrush="#059669"
+                                Foreground="#ECFDF5" FontWeight="Bold" Margin="0,0,12,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="📤 Export Settings (JSON)" FontSize="11"/>
+                            </StackPanel>
+                        </Button>
 
-                        <!-- Export / Import Buttons -->
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Command="{Binding ExportSettingsCommand}" Padding="14,8" Background="#065F46" BorderBrush="#059669"
-                                    Foreground="#ECFDF5" FontWeight="Bold" Margin="0,0,10,0">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="📤 Export Settings (JSON)" FontSize="11"/>
-                                </StackPanel>
-                            </Button>
-
-                            <Button Command="{Binding ImportSettingsCommand}" Padding="14,8" Background="#1E222B" BorderBrush="#334155"
-                                    Foreground="#F8FAFC" FontWeight="SemiBold">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="📥 Import Settings (JSON)" FontSize="11"/>
-                                </StackPanel>
-                            </Button>
-                        </StackPanel>
-
-                        <!-- Autostart Switch -->
-                        <Border Grid.Column="1" Background="#14161C" CornerRadius="6" Padding="12,8" BorderBrush="#252A36" BorderThickness="1" VerticalAlignment="Center">
-                            <CheckBox Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding StartMinimizedToTray, Mode=TwoWay}">
-                                <StackPanel>
-                                    <TextBlock Text="Start Minimized to Tray" FontWeight="SemiBold" FontSize="11" Foreground="#E2E8F0"/>
-                                    <TextBlock Text="Run on Windows startup" FontSize="9" Foreground="#64748B"/>
-                                </StackPanel>
-                            </CheckBox>
-                        </Border>
-                    </Grid>
+                        <Button Command="{Binding ImportSettingsCommand}" Padding="14,8" Background="#1E222B" BorderBrush="#334155"
+                                Foreground="#F8FAFC" FontWeight="SemiBold">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="📥 Import Settings (JSON)" FontSize="11"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                 </StackPanel>
+            </Border>
+
+            <!-- 4. Windows Startup & System Integration -->
+            <Border Background="#181A20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Text="🚀 WINDOWS STARTUP &amp; SYSTEM INTEGRATION" FontSize="13" FontWeight="Black" Foreground="#00E5FF"/>
+                        <TextBlock Text="Launch NovaSonics silently in the background when Windows boots, residing in the system notification tray."
+                                   FontSize="11" Foreground="#94A3B8" Margin="0,3,0,0"/>
+                    </StackPanel>
+
+                    <Border Grid.Column="1" Background="#14161C" CornerRadius="6" Padding="14,10" BorderBrush="#252A36" BorderThickness="1" VerticalAlignment="Center">
+                        <CheckBox Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding StartMinimizedToTray, Mode=TwoWay}">
+                            <StackPanel Margin="6,0,0,0">
+                                <TextBlock Text="Start Minimized to System Tray" FontWeight="SemiBold" FontSize="11" Foreground="#E2E8F0"/>
+                                <TextBlock Text="Run on Windows startup" FontSize="9" Foreground="#64748B"/>
+                            </StackPanel>
+                        </CheckBox>
+                    </Border>
+                </Grid>
             </Border>
 
         </StackPanel>

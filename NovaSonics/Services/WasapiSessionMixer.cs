@@ -116,6 +116,11 @@ namespace NovaSonics.Services
         {
             _configService = configService;
             _enumerator = new MMDeviceEnumerator();
+
+            // Filter out audiodg system DSP isolation process from saved configuration
+            _configService.Config.AppChannelAssignments.Remove("audiodg");
+            _configService.Config.AppChannelAssignments.Remove("audiodg.exe");
+
             LoadDefaultCategories();
         }
 
@@ -346,6 +351,11 @@ namespace NovaSonics.Services
                         }
 
                         if (string.IsNullOrWhiteSpace(procName)) continue;
+                        if (string.Equals(procName, "audiodg", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(procName, "audiodg.exe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
                         if (string.IsNullOrWhiteSpace(displayName)) displayName = procName;
 
                         if (!currentModels.ContainsKey(procName))

@@ -140,9 +140,9 @@
                                                   Content="{TemplateBinding SelectionBoxItem}"
                                                   ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                                   ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
-                                                  Margin="{TemplateBinding Padding}"
+                                                  Margin="10,2,26,2"
                                                   VerticalAlignment="Center"
-                                                  HorizontalAlignment="Left" />
+                                                  HorizontalAlignment="Stretch" />
                                 <Popup x:Name="Popup"
                                        Placement="Bottom"
                                        IsOpen="{TemplateBinding IsDropDownOpen}"

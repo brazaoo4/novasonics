@@ -127,7 +127,16 @@ namespace NovaSonics.ViewModels
             _chatMixBalance = cfg.ChatMixBalance;
 
             SyncMixerService();
-            InitDevices();
+            RebindSelectedDevices();
+
+            PlaybackDevices.CollectionChanged += (s, e) =>
+            {
+                App.Current?.Dispatcher?.Invoke(RebindSelectedDevices);
+            };
+            CaptureDevices.CollectionChanged += (s, e) =>
+            {
+                App.Current?.Dispatcher?.Invoke(RebindSelectedDevices);
+            };
 
             _deviceService.DefaultDeviceChanged += (s, dev) =>
             {
@@ -143,6 +152,12 @@ namespace NovaSonics.ViewModels
                             SelectedGameDevice = dev;
                             SelectedMediaDevice = dev;
                             SelectedChatDevice = dev;
+                            _configService.Config.GameDeviceId = dev.Id;
+                            _configService.Config.MediaDeviceId = dev.Id;
+                            _configService.Config.ChatDeviceId = dev.Id;
+                            OnPropertyChanged(nameof(SelectedGameDeviceId));
+                            OnPropertyChanged(nameof(SelectedMediaDeviceId));
+                            OnPropertyChanged(nameof(SelectedChatDeviceId));
                         }
                     }
                     finally
@@ -157,21 +172,125 @@ namespace NovaSonics.ViewModels
             RefreshCategorizedLists();
         }
 
-        private void InitDevices()
+        public string? SelectedGameDeviceId
+        {
+            get => SelectedGameDevice?.Id ?? _configService.Config.GameDeviceId;
+            set
+            {
+                if (value == null) return;
+                var match = PlaybackDevices.FirstOrDefault(d => d.Id == value);
+                if (match != null)
+                {
+                    SelectedGameDevice = match;
+                }
+                else
+                {
+                    _configService.Config.GameDeviceId = value;
+                    QueueSave();
+                }
+                OnPropertyChanged(nameof(SelectedGameDeviceId));
+            }
+        }
+
+        public string? SelectedMediaDeviceId
+        {
+            get => SelectedMediaDevice?.Id ?? _configService.Config.MediaDeviceId;
+            set
+            {
+                if (value == null) return;
+                var match = PlaybackDevices.FirstOrDefault(d => d.Id == value);
+                if (match != null)
+                {
+                    SelectedMediaDevice = match;
+                }
+                else
+                {
+                    _configService.Config.MediaDeviceId = value;
+                    QueueSave();
+                }
+                OnPropertyChanged(nameof(SelectedMediaDeviceId));
+            }
+        }
+
+        public string? SelectedChatDeviceId
+        {
+            get => SelectedChatDevice?.Id ?? _configService.Config.ChatDeviceId;
+            set
+            {
+                if (value == null) return;
+                var match = PlaybackDevices.FirstOrDefault(d => d.Id == value);
+                if (match != null)
+                {
+                    SelectedChatDevice = match;
+                }
+                else
+                {
+                    _configService.Config.ChatDeviceId = value;
+                    _deviceService.SetRoleEndpoint(value, Services.Interop.ERole.eCommunications);
+                    QueueSave();
+                }
+                OnPropertyChanged(nameof(SelectedChatDeviceId));
+            }
+        }
+
+        public string? SelectedMicDeviceId
+        {
+            get => SelectedMicDevice?.Id ?? _configService.Config.MicDeviceId;
+            set
+            {
+                if (value == null) return;
+                var match = CaptureDevices.FirstOrDefault(d => d.Id == value);
+                if (match != null)
+                {
+                    SelectedMicDevice = match;
+                }
+                else
+                {
+                    _configService.Config.MicDeviceId = value;
+                    _deviceService.SwitchCaptureDevice(value);
+                    QueueSave();
+                }
+                OnPropertyChanged(nameof(SelectedMicDeviceId));
+            }
+        }
+
+        public void RebindSelectedDevices()
         {
             var cfg = _configService.Config;
             var defOut = _deviceService.CurrentDefaultDevice ?? PlaybackDevices.FirstOrDefault(d => d.IsDefault) ?? PlaybackDevices.FirstOrDefault();
             var defIn = _deviceService.CurrentDefaultCaptureDevice ?? CaptureDevices.FirstOrDefault(d => d.IsDefault) ?? CaptureDevices.FirstOrDefault();
 
-            SelectedMasterDevice = PlaybackDevices.FirstOrDefault(d => d.Id == cfg.MasterDeviceId) ?? defOut;
-            SelectedGameDevice = PlaybackDevices.FirstOrDefault(d => d.Id == cfg.GameDeviceId) ?? defOut;
-            SelectedMediaDevice = PlaybackDevices.FirstOrDefault(d => d.Id == cfg.MediaDeviceId) ?? defOut;
-            SelectedChatDevice = PlaybackDevices.FirstOrDefault(d => d.Id == cfg.ChatDeviceId) ?? defOut;
-            SelectedMicDevice = CaptureDevices.FirstOrDefault(d => d.Id == cfg.MicDeviceId) ?? defIn;
-
-            if (SelectedMasterDevice != null)
+            _isInternalDeviceSwitch = true;
+            try
             {
-                ActiveEndpointName = SelectedMasterDevice.Name;
+                SelectedMasterDevice = (!string.IsNullOrEmpty(cfg.MasterDeviceId) ? PlaybackDevices.FirstOrDefault(d => d.Id == cfg.MasterDeviceId) : null) ?? defOut;
+                SelectedGameDevice = (!string.IsNullOrEmpty(cfg.GameDeviceId) ? PlaybackDevices.FirstOrDefault(d => d.Id == cfg.GameDeviceId) : null) ?? defOut;
+                SelectedMediaDevice = (!string.IsNullOrEmpty(cfg.MediaDeviceId) ? PlaybackDevices.FirstOrDefault(d => d.Id == cfg.MediaDeviceId) : null) ?? defOut;
+                SelectedChatDevice = (!string.IsNullOrEmpty(cfg.ChatDeviceId) ? PlaybackDevices.FirstOrDefault(d => d.Id == cfg.ChatDeviceId) : null) ?? defOut;
+                SelectedMicDevice = (!string.IsNullOrEmpty(cfg.MicDeviceId) ? CaptureDevices.FirstOrDefault(d => d.Id == cfg.MicDeviceId) : null) ?? defIn;
+
+                if (SelectedMasterDevice != null)
+                {
+                    ActiveEndpointName = SelectedMasterDevice.Name;
+                    if (string.IsNullOrEmpty(cfg.MasterDeviceId)) cfg.MasterDeviceId = SelectedMasterDevice.Id;
+                }
+                if (SelectedGameDevice != null && string.IsNullOrEmpty(cfg.GameDeviceId))
+                    cfg.GameDeviceId = SelectedGameDevice.Id;
+                if (SelectedMediaDevice != null && string.IsNullOrEmpty(cfg.MediaDeviceId))
+                    cfg.MediaDeviceId = SelectedMediaDevice.Id;
+                if (SelectedChatDevice != null && string.IsNullOrEmpty(cfg.ChatDeviceId))
+                    cfg.ChatDeviceId = SelectedChatDevice.Id;
+                if (SelectedMicDevice != null && string.IsNullOrEmpty(cfg.MicDeviceId))
+                    cfg.MicDeviceId = SelectedMicDevice.Id;
+
+                OnPropertyChanged(nameof(SelectedGameDeviceId));
+                OnPropertyChanged(nameof(SelectedMediaDeviceId));
+                OnPropertyChanged(nameof(SelectedChatDeviceId));
+                OnPropertyChanged(nameof(SelectedMicDeviceId));
+            }
+            finally
+            {
+                _isInternalDeviceSwitch = false;
             }
         }
 
@@ -198,6 +317,9 @@ namespace NovaSonics.ViewModels
                     _configService.Config.GameDeviceId = value.Id;
                     _configService.Config.MediaDeviceId = value.Id;
                     _configService.Config.ChatDeviceId = value.Id;
+                    OnPropertyChanged(nameof(SelectedGameDeviceId));
+                    OnPropertyChanged(nameof(SelectedMediaDeviceId));
+                    OnPropertyChanged(nameof(SelectedChatDeviceId));
                 }
                 finally
                 {
@@ -208,6 +330,7 @@ namespace NovaSonics.ViewModels
 
         partial void OnSelectedGameDeviceChanged(AudioDeviceModel? value)
         {
+            OnPropertyChanged(nameof(SelectedGameDeviceId));
             if (_isInternalDeviceSwitch || value == null) return;
             _configService.Config.GameDeviceId = value.Id;
             QueueSave();
@@ -215,6 +338,7 @@ namespace NovaSonics.ViewModels
 
         partial void OnSelectedMediaDeviceChanged(AudioDeviceModel? value)
         {
+            OnPropertyChanged(nameof(SelectedMediaDeviceId));
             if (_isInternalDeviceSwitch || value == null) return;
             _configService.Config.MediaDeviceId = value.Id;
             QueueSave();
@@ -222,6 +346,7 @@ namespace NovaSonics.ViewModels
 
         partial void OnSelectedChatDeviceChanged(AudioDeviceModel? value)
         {
+            OnPropertyChanged(nameof(SelectedChatDeviceId));
             if (_isInternalDeviceSwitch || value == null) return;
             _configService.Config.ChatDeviceId = value.Id;
             _deviceService.SetRoleEndpoint(value.Id, Services.Interop.ERole.eCommunications);
@@ -230,6 +355,7 @@ namespace NovaSonics.ViewModels
 
         partial void OnSelectedMicDeviceChanged(AudioDeviceModel? value)
         {
+            OnPropertyChanged(nameof(SelectedMicDeviceId));
             if (_isInternalDeviceSwitch || value == null) return;
             _configService.Config.MicDeviceId = value.Id;
             _deviceService.SwitchCaptureDevice(value.Id);

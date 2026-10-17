@@ -90,8 +90,8 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <StackPanel Grid.Row="0" Margin="0,0,0,10" PreviewMouseWheel="Master_MouseWheel">
-                        <Grid Margin="0,0,0,3">
+                    <StackPanel Grid.Row="0" Margin="0,0,0,10" MinHeight="52" PreviewMouseWheel="Master_MouseWheel" VerticalAlignment="Center">
+                        <Grid Margin="0,6,0,6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -99,14 +99,6 @@
                             <TextBlock Grid.Column="0" Text="🔊 MASTER" FontWeight="Bold" FontSize="13" Foreground="#F8FAFC" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding MasterVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
                         </Grid>
-                        <ComboBox ItemsSource="{Binding PlaybackDevices}" SelectedItem="{Binding SelectedMasterDevice, Mode=TwoWay}"
-                                  Height="26" FontSize="10" ToolTip="Select Output Device for Master">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
                     </StackPanel>
 
                     <!-- Slider + Peak Meter Track -->
@@ -195,7 +187,9 @@
                             <TextBlock Grid.Column="0" Text="🎮 GAME" FontWeight="Bold" FontSize="13" Foreground="#00E5FF" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding GameVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
                         </Grid>
-                        <ComboBox ItemsSource="{Binding PlaybackDevices}" SelectedItem="{Binding SelectedGameDevice, Mode=TwoWay}"
+                        <ComboBox ItemsSource="{Binding PlaybackDevices}"
+                                  SelectedValuePath="Id"
+                                  SelectedValue="{Binding SelectedGameDeviceId, Mode=TwoWay}"
                                   Height="26" FontSize="10" ToolTip="Select Output Device for Game">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -288,7 +282,9 @@
                             <TextBlock Grid.Column="0" Text="🎵 MEDIA" FontWeight="Bold" FontSize="13" Foreground="#F59E0B" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding MediaVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
                         </Grid>
-                        <ComboBox ItemsSource="{Binding PlaybackDevices}" SelectedItem="{Binding SelectedMediaDevice, Mode=TwoWay}"
+                        <ComboBox ItemsSource="{Binding PlaybackDevices}"
+                                  SelectedValuePath="Id"
+                                  SelectedValue="{Binding SelectedMediaDeviceId, Mode=TwoWay}"
                                   Height="26" FontSize="10" ToolTip="Select Output Device for Media">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -381,7 +377,9 @@
                             <TextBlock Grid.Column="0" Text="💬 CHAT" FontWeight="Bold" FontSize="13" Foreground="#A78BFA" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding ChatVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
                         </Grid>
-                        <ComboBox ItemsSource="{Binding PlaybackDevices}" SelectedItem="{Binding SelectedChatDevice, Mode=TwoWay}"
+                        <ComboBox ItemsSource="{Binding PlaybackDevices}"
+                                  SelectedValuePath="Id"
+                                  SelectedValue="{Binding SelectedChatDeviceId, Mode=TwoWay}"
                                   Height="26" FontSize="10" ToolTip="Select Output Device for Voice Chat">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -474,7 +472,9 @@
                             <TextBlock Grid.Column="0" Text="🎤 MIC" FontWeight="Bold" FontSize="13" Foreground="#10B981" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding MicVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
                         </Grid>
-                        <ComboBox ItemsSource="{Binding CaptureDevices}" SelectedItem="{Binding SelectedMicDevice, Mode=TwoWay}"
+                        <ComboBox ItemsSource="{Binding CaptureDevices}"
+                                  SelectedValuePath="Id"
+                                  SelectedValue="{Binding SelectedMicDeviceId, Mode=TwoWay}"
                                   Height="26" FontSize="10" ToolTip="Select Input Device for Microphone">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -528,7 +528,7 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="🎮 100% GAME" FontSize="12" FontWeight="Bold" Foreground="#00E5FF" Margin="0,0,12,0"/>
+                    <TextBlock Text="🎮 GAME" FontSize="12" FontWeight="Bold" Foreground="#00E5FF" Margin="0,0,12,0"/>
                 </StackPanel>
 
                 <!-- Center CHATMIX Slider -->
@@ -538,10 +538,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,6">
-                        <TextBlock Text="CHATMIX BALANCE" FontWeight="Bold" FontSize="12" Foreground="#CBD5E1"/>
-                        <TextBlock Text=" (Hardware Synchronized)" FontSize="11" Foreground="#64748B" Margin="6,0,0,0"/>
-                    </StackPanel>
+                    <TextBlock Grid.Row="0" Text="CHATMIX BALANCE" FontWeight="Bold" FontSize="12" Foreground="#CBD5E1" HorizontalAlignment="Center" Margin="0,0,0,6"/>
 
                     <!-- Horizontal Slider with Center Detent (0.0) -->
                     <Slider Grid.Row="1" Minimum="-1.0" Maximum="1.0" Value="{Binding ChatMixBalance, Mode=TwoWay}"
@@ -549,7 +546,7 @@
                 </Grid>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="100% CHAT 💬" FontSize="12" FontWeight="Bold" Foreground="#A78BFA" Margin="12,0,0,0"/>
+                    <TextBlock Text="CHAT 💬" FontSize="12" FontWeight="Bold" Foreground="#A78BFA" Margin="12,0,0,0"/>
                 </StackPanel>
             </Grid>
         </Border>
