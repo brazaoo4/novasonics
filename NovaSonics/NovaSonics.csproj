@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>NovaSonics</RootNamespace>
     <AssemblyName>NovaSonics</AssemblyName>
-    <ApplicationIcon></ApplicationIcon>
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -27,6 +27,7 @@
     <None Update="Resources\default_app_categories.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <Resource Include="Resources\app.ico" />
   </ItemGroup>
 
 </Project>

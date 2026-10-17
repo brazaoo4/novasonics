@@ -7,25 +7,107 @@
         xmlns:views="clr-namespace:NovaSonics.Views"
         xmlns:conv="clr-namespace:NovaSonics.Converters"
         mc:Ignorable="d"
-        Title="NovaSonics - Arctis Nova 7 Standalone Suite" 
+        Title="NovaSonics" 
+        Icon="Resources/app.ico"
         Height="780" Width="1140"
         MinHeight="650" MinWidth="980"
         WindowStartupLocation="CenterScreen"
         Background="#111317">
 
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="34" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
     <Window.Resources>
         <conv:BooleanToOnlineTextConverter x:Key="BooleanToOnlineTextConverter" />
         <conv:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+
+        <Style x:Key="CaptionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#94A3B8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#252A36"/>
+                                <Setter Property="Foreground" Value="#F8FAFC"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="CloseCaptionButtonStyle" TargetType="Button" BasedOn="{StaticResource CaptionButtonStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E81123"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="34" />
             <RowDefinition Height="64" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!-- Custom Integrated Dark Window Title Bar -->
+        <Border Grid.Row="0" Background="#111317" BorderBrush="#1F232D" BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Left: App Icon & Title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" IsHitTestVisible="False">
+                    <Image Source="Resources/app.ico" Width="16" Height="16" Margin="12,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="NovaSonics" FontWeight="SemiBold" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Center: Draggable Spacer handled automatically by WindowChrome CaptionHeight -->
+
+                <!-- Right: Custom Caption Control Buttons -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Style="{StaticResource CaptionButtonStyle}" Click="MinimizeButton_Click" ToolTip="Minimize">
+                        <TextBlock Text="─" FontSize="11" FontWeight="Bold"/>
+                    </Button>
+                    <Button Style="{StaticResource CaptionButtonStyle}" Click="MaximizeButton_Click" ToolTip="Maximize / Restore">
+                        <TextBlock Text="🗖" FontSize="10"/>
+                    </Button>
+                    <Button Style="{StaticResource CloseCaptionButtonStyle}" Click="CloseButton_Click" ToolTip="Close">
+                        <TextBlock Text="✕" FontSize="11"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <!-- Top Header Navigation & Live Status Bar -->
-        <Border Grid.Row="0" Background="#181A20" BorderBrush="#252833" BorderThickness="0,0,0,1" Padding="20,0">
+        <Border Grid.Row="1" Background="#181A20" BorderBrush="#252833" BorderThickness="0,0,0,1" Padding="20,0">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -173,7 +255,7 @@
         </Border>
 
         <!-- Main Views (Tab Switched) -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <!-- 0. MIXER VIEW -->
             <views:MixerView DataContext="{Binding MixerVM}">
                 <views:MixerView.Style>

@@ -44,12 +44,10 @@ namespace NovaSonics.ViewModels
 
             _headsetStatus = _headsetService.Status;
 
-            MixerVM = new MixerViewModel(_mixerService, _configService);
+            MixerVM = new MixerViewModel(_mixerService, _deviceService, _configService);
             DeviceManagerVM = new DeviceManagerViewModel(_deviceService, _configService, _notificationService);
             EqualizerVM = new EqualizerViewModel(_headsetService, _configService, _notificationService);
             HardwareVM = new HardwareViewModel(_headsetService, _configService, _notificationService);
-
-            MixerVM.ActiveEndpointName = _deviceService.CurrentDefaultDevice?.Name ?? "Default Endpoint";
 
             _headsetService.StatusUpdated += OnHeadsetStatusUpdated;
             _headsetService.ChatMixChanged += OnChatMixChanged;
@@ -58,7 +56,6 @@ namespace NovaSonics.ViewModels
             _deviceService.DefaultDeviceChanged += (s, d) =>
             {
                 _mixerService.RebindEndpoint();
-                MixerVM.ActiveEndpointName = d.Name;
             };
 
             _uiTimer = new DispatcherTimer

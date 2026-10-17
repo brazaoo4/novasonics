@@ -3,38 +3,145 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:conv="clr-namespace:NovaSonics.Converters"
              mc:Ignorable="d"
-             d:DesignHeight="700" d:DesignWidth="920">
+             d:DesignHeight="1200" d:DesignWidth="980">
+
+    <UserControl.Resources>
+        <conv:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <conv:InverseBooleanConverter x:Key="InverseBooleanConverter" />
+        <conv:DbFormatConverter x:Key="DbFormatConverter" />
+        <conv:DecimalFormatConverter x:Key="DecimalFormatConverter" />
+
+        <!-- Sonar Style Pill Toggle Switch -->
+        <Style x:Key="SonarToggleSwitch" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Grid Width="40" Height="22">
+                                <Border x:Name="Track" Background="#262A34" CornerRadius="11" BorderBrush="#363C4A" BorderThickness="1" />
+                                <Ellipse x:Name="Thumb" Width="16" Height="16" Fill="#94A3B8" HorizontalAlignment="Left" Margin="3,0,0,0" />
+                            </Grid>
+                            <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="#3874FF" />
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#4C82FF" />
+                                <Setter TargetName="Thumb" Property="Fill" Value="#FFFFFF" />
+                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Segmented Mode Button Style -->
+        <Style x:Key="SegmentedButton" TargetType="Button">
+            <Setter Property="Background" Value="#1C1F26" />
+            <Setter Property="Foreground" Value="#94A3B8" />
+            <Setter Property="BorderBrush" Value="#2A303C" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="20">
-        <StackPanel MaxWidth="920" HorizontalAlignment="Stretch">
+        <StackPanel MaxWidth="960" HorizontalAlignment="Stretch">
 
-            <!-- Title & Info Banner -->
-            <Border Background="#1C1F26" CornerRadius="8" Padding="16,14" Margin="0,0,0,14" BorderBrush="#262A34" BorderThickness="1">
+            <!-- Profile Selector Segmented Header (Game, Media, Chat, Mic) -->
+            <Border Background="#16181F" CornerRadius="8" Padding="6" Margin="0,0,0,16" BorderBrush="#252A36" BorderThickness="1">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
-                            <TextBlock Text="🎛️ Hardware Graphic Equalizer" FontSize="16" FontWeight="Black" Foreground="#00E5FF"/>
-                            <Border Background="#1E3A5F" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="Onboard Headset DSP (0x33)" FontSize="10" FontWeight="Bold" Foreground="#38BDF8"/>
-                            </Border>
-                        </StackPanel>
-                        <TextBlock Text="Directly configures the Arctis Nova 7 DAC hardware equalizer with zero latency and 0% CPU overhead."
-                                   FontSize="11" Foreground="#94A3B8"/>
-                    </StackPanel>
+                    <!-- Game Profile Button -->
+                    <Button Grid.Column="0" Command="{Binding SelectProfileCommand}" CommandParameter="Game" Margin="3" Height="36">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SegmentedButton}">
+                                <Setter Property="Content" Value="🎮 GAME" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedProfile}" Value="Game">
+                                        <Setter Property="Background" Value="#00E5FF" />
+                                        <Setter Property="Foreground" Value="#0F172A" />
+                                        <Setter Property="FontWeight" Value="Black" />
+                                        <Setter Property="BorderBrush" Value="#00E5FF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
 
-                    <!-- Save / Flash Burn Buttons -->
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                        <Button Content="↺ Flat" Command="{Binding ResetFlatCommand}"
-                                Padding="12,8" Margin="0,0,8,0" Background="#1E222B" BorderBrush="#334155" Foreground="#94A3B8" />
-                        <Button Content="💾 Save to Headset" Command="{Binding ApplyToHeadsetCommand}"
-                                Padding="16,8" Background="#00E5FF" Foreground="#0F172A" FontWeight="Bold" BorderThickness="0" />
-                    </StackPanel>
+                    <!-- Media Profile Button -->
+                    <Button Grid.Column="1" Command="{Binding SelectProfileCommand}" CommandParameter="Media" Margin="3" Height="36">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SegmentedButton}">
+                                <Setter Property="Content" Value="🎬 MEDIA" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedProfile}" Value="Media">
+                                        <Setter Property="Background" Value="#F59E0B" />
+                                        <Setter Property="Foreground" Value="#0F172A" />
+                                        <Setter Property="FontWeight" Value="Black" />
+                                        <Setter Property="BorderBrush" Value="#F59E0B" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- Chat Profile Button -->
+                    <Button Grid.Column="2" Command="{Binding SelectProfileCommand}" CommandParameter="Chat" Margin="3" Height="36">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SegmentedButton}">
+                                <Setter Property="Content" Value="💬 CHAT" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedProfile}" Value="Chat">
+                                        <Setter Property="Background" Value="#A855F7" />
+                                        <Setter Property="Foreground" Value="#0F172A" />
+                                        <Setter Property="FontWeight" Value="Black" />
+                                        <Setter Property="BorderBrush" Value="#A855F7" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- Mic Profile Button -->
+                    <Button Grid.Column="3" Command="{Binding SelectProfileCommand}" CommandParameter="Mic" Margin="3" Height="36">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource SegmentedButton}">
+                                <Setter Property="Content" Value="🎙️ MIC" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedProfile}" Value="Mic">
+                                        <Setter Property="Background" Value="#10B981" />
+                                        <Setter Property="Foreground" Value="#0F172A" />
+                                        <Setter Property="FontWeight" Value="Black" />
+                                        <Setter Property="BorderBrush" Value="#10B981" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                 </Grid>
             </Border>
 
@@ -44,24 +151,33 @@
                 <TextBlock Text="{Binding StatusMessage}" Foreground="#38BDF8" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center"/>
             </Border>
 
-            <!-- Main Equalizer Card -->
-            <Border Background="#181A20" CornerRadius="8" Padding="18" BorderBrush="#262A34" BorderThickness="1">
+            <!-- 1. GRAPHIC EQUALIZER CARD -->
+            <Border Background="#181A20" CornerRadius="8" Padding="18" BorderBrush="#262A34" BorderThickness="1" Margin="0,0,0,16">
                 <StackPanel>
-                    <!-- Preset Selector Header -->
+                    <!-- Preset Selector Header & Save to Headset -->
                     <Grid Margin="0,0,0,16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="240" />
+                            <ColumnDefinition Width="220" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <TextBlock Grid.Column="0" Text="PRESET:" FontWeight="Bold" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                        <ComboBox Grid.Column="1" ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset, Mode=TwoWay}"
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding AvailablePresets}" SelectedItem="{Binding SelectedPreset, Mode=TwoWay}"
                                   Height="32" FontSize="12"/>
 
                         <!-- Tuning Info -->
                         <TextBlock Grid.Column="2" Text="Range: -10.0 dB to +10.0 dB"
-                                   FontSize="11" Foreground="#64748B" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                   FontSize="11" Foreground="#64748B" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                        <!-- Reset & Hardware Burn Buttons -->
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="↺ Flat" Command="{Binding ResetFlatCommand}"
+                                    Padding="12,6" Margin="0,0,8,0" Background="#1E222B" BorderBrush="#334155" Foreground="#94A3B8" />
+                            <Button Content="💾 Save to Headset" Command="{Binding ApplyToHeadsetCommand}"
+                                    Padding="14,6" Background="#00E5FF" Foreground="#0F172A" FontWeight="Bold" BorderThickness="0" />
+                        </StackPanel>
                     </Grid>
 
                     <!-- 10-Band Sliders Rack -->
@@ -77,7 +193,7 @@
                                     <Grid Margin="2,0">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="24" />
-                                            <RowDefinition Height="210" />
+                                            <RowDefinition Height="190" />
                                             <RowDefinition Height="26" />
                                         </Grid.RowDefinitions>
 
@@ -93,7 +209,7 @@
                                                 TickFrequency="5" TickPlacement="Both"
                                                 IsSnapToTickEnabled="False"
                                                 HorizontalAlignment="Center"
-                                                Height="200"
+                                                Height="180"
                                                 Cursor="Hand"
                                                 MouseWheel="Slider_MouseWheel"/>
 
@@ -108,6 +224,382 @@
                     </Border>
                 </StackPanel>
             </Border>
+
+            <!-- ======================================================== -->
+            <!-- SECTION A: SPATIAL AUDIO & IMMERSION (Game & Media)      -->
+            <!-- ======================================================== -->
+            <StackPanel Visibility="{Binding IsGameOrMedia, Converter={StaticResource BooleanToVisibilityConverter}}">
+
+                <!-- 2. SPATIAL AUDIO CARD -->
+                <Border Background="#181A20" CornerRadius="8" Padding="18" BorderBrush="#262A34" BorderThickness="1" Margin="0,0,0,16">
+                    <StackPanel>
+                        <!-- Spatial Audio Header & Mode Toggles -->
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <CheckBox Grid.Column="0" Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding SpatialAudioEnabled, Mode=TwoWay}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="SPATIAL AUDIO" FontWeight="Black" FontSize="13" Foreground="#F8FAFC" VerticalAlignment="Center" />
+                                    <TextBlock Text=" ⓘ" FontSize="11" Foreground="#64748B" ToolTip="Virtual 7.1 surround sound positioning with binaural head-related transfer rendering." VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+
+                            <!-- Headphone Mode vs Speaker Mode Segmented Toggle -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                <Button Content="HEADPHONE MODE" Command="{Binding SetHeadphoneModeCommand}" Margin="0,0,4,0">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource SegmentedButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsHeadphoneMode}" Value="True">
+                                                    <Setter Property="Background" Value="#3874FF" />
+                                                    <Setter Property="Foreground" Value="#FFFFFF" />
+                                                    <Setter Property="BorderBrush" Value="#4C82FF" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                <Button Content="SPEAKER MODE" Command="{Binding SetSpeakerModeCommand}">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource SegmentedButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSpeakerMode}" Value="True">
+                                                    <Setter Property="Background" Value="#3874FF" />
+                                                    <Setter Property="Foreground" Value="#FFFFFF" />
+                                                    <Setter Property="BorderBrush" Value="#4C82FF" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Spatial Audio Body: 7.1 Surround Visualizer + Tuning Sliders -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 7.1 Surround Speaker Diagram Disc -->
+                            <Border Grid.Column="0" Width="180" Height="180" Background="#14171E" CornerRadius="90" BorderBrush="#252A36" BorderThickness="2"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Grid>
+                                    <!-- Concentric Radar Rings -->
+                                    <Ellipse Width="130" Height="130" Stroke="#1E232E" StrokeThickness="1" StrokeDashArray="2,2"/>
+                                    <Ellipse Width="80" Height="80" Stroke="#252B38" StrokeThickness="1" />
+
+                                    <!-- Center Listener Head Badge -->
+                                    <Border Width="34" Height="34" Background="#1E293B" CornerRadius="17" BorderBrush="#00E5FF" BorderThickness="1.5"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock Text="🎧" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+
+                                    <!-- 7 Surround Speaker Nodes -->
+                                    <!-- Center (C) Top -->
+                                    <Border Width="22" Height="22" Background="#262F40" CornerRadius="11" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,10,0,0" ToolTip="Center Channel">
+                                        <TextBlock Text="📢" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <!-- Front Left (FL) -->
+                                    <Border Width="20" Height="20" Background="#262F40" CornerRadius="10" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="26,30,0,0" ToolTip="Front Left">
+                                        <TextBlock Text="🔊" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <!-- Front Right (FR) -->
+                                    <Border Width="20" Height="20" Background="#262F40" CornerRadius="10" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,30,26,0" ToolTip="Front Right">
+                                        <TextBlock Text="🔊" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <!-- Surround Left (SL) -->
+                                    <Border Width="20" Height="20" Background="#262F40" CornerRadius="10" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="8,0,0,0" ToolTip="Surround Left">
+                                        <TextBlock Text="🔊" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <!-- Surround Right (SR) -->
+                                    <Border Width="20" Height="20" Background="#262F40" CornerRadius="10" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0" ToolTip="Surround Right">
+                                        <TextBlock Text="🔊" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <!-- Rear Left (RL) -->
+                                    <Border Width="20" Height="20" Background="#262F40" CornerRadius="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="26,0,0,26" ToolTip="Rear Left">
+                                        <TextBlock Text="🔊" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <!-- Rear Right (RR) -->
+                                    <Border Width="20" Height="20" Background="#262F40" CornerRadius="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,26,26" ToolTip="Rear Right">
+                                        <TextBlock Text="🔊" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <!-- Tuning Sliders Right Column -->
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
+                                <TextBlock Text="Tuning" FontWeight="Bold" FontSize="13" Foreground="#F8FAFC" Margin="0,0,0,4"/>
+                                <TextBlock Text="Tune slider towards Performance to improve directionality and localization for competitive FPS games. Or tune towards Immersion to enhance environmental effects for story games and movies."
+                                           TextWrapping="Wrap" FontSize="11" Foreground="#94A3B8" Margin="0,0,0,16"/>
+
+                                <!-- Tuning Slider: Performance <-> Immersion -->
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="90" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="90" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Column="0" Text="Performance" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding SpatialTuning, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="Immersion" FontSize="11" Foreground="#94A3B8" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <!-- Distance Slider -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="90" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Column="0" Text="Distance" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding SpatialDistance, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding SpatialDistance, StringFormat='{}{0:0}'}" FontSize="11" FontWeight="Bold" Foreground="#00E5FF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                </Grid>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- 3. VOLUME BOOST & SMART VOLUME (2-Column Sub-Panels) -->
+                <Grid Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Volume Boost Card -->
+                    <Border Grid.Column="0" Background="#181A20" CornerRadius="8" Padding="16" BorderBrush="#262A34" BorderThickness="1">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <TextBlock Text="VOLUME BOOST" FontWeight="Black" FontSize="12" Foreground="#F8FAFC" VerticalAlignment="Center"/>
+                                <TextBlock Text=" ⓘ" FontSize="11" Foreground="#64748B" ToolTip="Applies clean hardware pre-gain to quieter audio sources." VerticalAlignment="Center"/>
+                            </StackPanel>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="60" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" Text="Gain" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                <Slider Grid.Column="1" Minimum="0.0" Maximum="12.0" Value="{Binding VolumeBoostGain, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="{Binding VolumeBoostGain, Converter={StaticResource DbFormatConverter}}"
+                                           FontSize="11" FontWeight="Bold" Foreground="#00E5FF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Smart Volume Card -->
+                    <Border Grid.Column="2" Background="#181A20" CornerRadius="8" Padding="16" BorderBrush="#262A34" BorderThickness="1">
+                        <StackPanel>
+                            <CheckBox Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding SmartVolumeEnabled, Mode=TwoWay}" Margin="0,0,0,12">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="SMART VOLUME" FontWeight="Black" FontSize="12" Foreground="#F8FAFC" VerticalAlignment="Center"/>
+                                    <TextBlock Text=" ⓘ" FontSize="11" Foreground="#64748B" ToolTip="Dynamically compresses loud explosions and amplifies quiet sounds for balanced listening." VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="50" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" Text="Level" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                <Slider Grid.Column="1" Minimum="0.0" Maximum="1.0" Value="{Binding SmartVolumeLevel, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="{Binding SmartVolumeLevel, Converter={StaticResource DecimalFormatConverter}}"
+                                           FontSize="11" FontWeight="Bold" Foreground="#00E5FF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
+
+            <!-- ======================================================== -->
+            <!-- SECTION B: CLEARCAST VOICE DSP (Chat & Mic Profiles)     -->
+            <!-- ======================================================== -->
+            <StackPanel Visibility="{Binding IsChatOrMic, Converter={StaticResource BooleanToVisibilityConverter}}">
+
+                <!-- 4. CLEARCAST AI NOISE CANCELLATION CARD -->
+                <Border Background="#181A20" CornerRadius="8" Padding="18" BorderBrush="#262A34" BorderThickness="1" Margin="0,0,0,16">
+                    <StackPanel>
+                        <!-- Header with Toggle -->
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <CheckBox Grid.Column="0" Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding ClearCastAiEnabled, Mode=TwoWay}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="CLEARCAST AI NOISE CANCELLATION" FontWeight="Black" FontSize="13" Foreground="#F8FAFC" VerticalAlignment="Center"/>
+                                    <TextBlock Text=" ⓘ" FontSize="11" Foreground="#64748B" ToolTip="Removes non-vocal sounds, background noise, and echo using ClearCast AI acoustic models." VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+                        </Grid>
+
+                        <!-- Animated Waveform Visualizer + Sensitivity Slider -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="220" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Stylized Voice Waveform Graphic -->
+                            <Border Grid.Column="0" Height="50" Background="#14171E" CornerRadius="6" Padding="6" BorderBrush="#2D3340" BorderThickness="1">
+                                <Path Stroke="#10B981" StrokeThickness="2" Fill="Transparent" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                      Data="M 0,20 Q 15,5 30,20 T 60,20 T 90,5 T 120,35 T 150,15 T 180,20 T 200,20">
+                                    <Path.Style>
+                                        <Style TargetType="Path">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SelectedProfile}" Value="Chat">
+                                                    <Setter Property="Stroke" Value="#A855F7" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Path.Style>
+                                </Path>
+                            </Border>
+
+                            <!-- Sensitivity Slider -->
+                            <Grid Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" Text="Min" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding ClearCastSensitivity, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Max" FontSize="11" Foreground="#94A3B8" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- 5. NOISE REDUCTION & NOISE GATE (2-Column Sub-Panels) -->
+                <Grid Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Noise Reduction Card -->
+                    <Border Grid.Column="0" Background="#181A20" CornerRadius="8" Padding="16" BorderBrush="#262A34" BorderThickness="1"
+                            IsEnabled="{Binding IsNoiseReductionActive}">
+                        <StackPanel>
+                            <TextBlock Text="NOISE REDUCTION" FontWeight="Black" FontSize="12" Foreground="#F8FAFC" Margin="0,0,0,2"/>
+                            <TextBlock Text="Disabled while Clearcast AI noise cancellation is active" FontSize="10" Foreground="#64748B" Margin="0,0,0,10">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ClearCastAiEnabled}" Value="False">
+                                                <Setter Property="Text" Value="Reduces static background noise and sudden keyboard clicks." />
+                                                <Setter Property="Foreground" Value="#94A3B8" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <!-- Background Slider -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="36" />
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox Grid.Column="0" Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding NoiseReductionBackgroundEnabled, Mode=TwoWay}"/>
+                                <TextBlock Grid.Column="1" Text="Background" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                <Slider Grid.Column="2" Minimum="0.0" Maximum="1.0" Value="{Binding NoiseReductionBackground, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="3" Text="{Binding NoiseReductionBackground, Converter={StaticResource DecimalFormatConverter}}"
+                                           FontSize="10" FontWeight="Bold" Foreground="#94A3B8" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <!-- Impact Slider -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="36" />
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox Grid.Column="0" Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding NoiseReductionImpactEnabled, Mode=TwoWay}"/>
+                                <TextBlock Grid.Column="1" Text="Impact" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                <Slider Grid.Column="2" Minimum="0.0" Maximum="1.0" Value="{Binding NoiseReductionImpact, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="3" Text="{Binding NoiseReductionImpact, Converter={StaticResource DecimalFormatConverter}}"
+                                           FontSize="10" FontWeight="Bold" Foreground="#94A3B8" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Noise Gate Card -->
+                    <Border Grid.Column="2" Background="#181A20" CornerRadius="8" Padding="16" BorderBrush="#262A34" BorderThickness="1">
+                        <StackPanel>
+                            <CheckBox Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding NoiseGateEnabled, Mode=TwoWay}" Margin="0,0,0,12">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="NOISE GATE" FontWeight="Black" FontSize="12" Foreground="#F8FAFC" VerticalAlignment="Center"/>
+                                    <TextBlock Text=" ⓘ" FontSize="11" Foreground="#64748B" ToolTip="Mutes audio completely below threshold to eliminate breathing and room noise." VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </CheckBox>
+
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="60" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="60" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" Text="Threshold" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                                <Slider Grid.Column="1" Minimum="-80.0" Maximum="0.0" Value="{Binding NoiseGateThreshold, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="{Binding NoiseGateThreshold, Converter={StaticResource DbFormatConverter}}"
+                                           FontSize="11" FontWeight="Bold" Foreground="#00E5FF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <CheckBox Content="Automatically compute the threshold for the noise gate effect."
+                                      IsChecked="{Binding NoiseGateAuto, Mode=TwoWay}" FontSize="10" Foreground="#64748B"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- 6. COMPRESSOR CARD -->
+                <Border Background="#181A20" CornerRadius="8" Padding="16" BorderBrush="#262A34" BorderThickness="1" Margin="0,0,0,16">
+                    <StackPanel>
+                        <CheckBox Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding CompressorEnabled, Mode=TwoWay}" Margin="0,0,0,12">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="COMPRESSOR" FontWeight="Black" FontSize="12" Foreground="#F8FAFC" VerticalAlignment="Center"/>
+                                <TextBlock Text=" ⓘ" FontSize="11" Foreground="#64748B" ToolTip="Evenly balances microphone levels, boosting soft whispering and curbing shouting." VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </CheckBox>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="40" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="50" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="Level" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                            <Slider Grid.Column="1" Minimum="0.0" Maximum="1.0" Value="{Binding CompressorLevel, Mode=TwoWay}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" Text="{Binding CompressorLevel, Converter={StaticResource DecimalFormatConverter}}"
+                                       FontSize="11" FontWeight="Bold" Foreground="#00E5FF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
 
         </StackPanel>
     </ScrollViewer>

@@ -12,7 +12,26 @@ namespace NovaSonics.ViewModels
     public partial class MixerViewModel : ObservableObject
     {
         private readonly IAudioMixerService _mixerService;
+        private readonly IDeviceSwitchService _deviceService;
         private readonly IConfigService _configService;
+
+        public ObservableCollection<AudioDeviceModel> PlaybackDevices => _deviceService.PlaybackDevices;
+        public ObservableCollection<AudioDeviceModel> CaptureDevices => _deviceService.CaptureDevices;
+
+        [ObservableProperty]
+        private AudioDeviceModel? _selectedMasterDevice;
+
+        [ObservableProperty]
+        private AudioDeviceModel? _selectedGameDevice;
+
+        [ObservableProperty]
+        private AudioDeviceModel? _selectedMediaDevice;
+
+        [ObservableProperty]
+        private AudioDeviceModel? _selectedChatDevice;
+
+        [ObservableProperty]
+        private AudioDeviceModel? _selectedMicDevice;
 
         [ObservableProperty]
         private string _activeEndpointName = "Default Endpoint";
@@ -74,10 +93,12 @@ namespace NovaSonics.ViewModels
 
         private readonly DispatcherTimer _saveDebounceTimer;
         private bool _isExternalUpdate;
+        private bool _isInternalDeviceSwitch;
 
-        public MixerViewModel(IAudioMixerService mixerService, IConfigService configService)
+        public MixerViewModel(IAudioMixerService mixerService, IDeviceSwitchService deviceService, IConfigService configService)
         {
             _mixerService = mixerService;
+            _deviceService = deviceService;
             _configService = configService;
 
             _saveDebounceTimer = new DispatcherTimer
@@ -106,10 +127,113 @@ namespace NovaSonics.ViewModels
             _chatMixBalance = cfg.ChatMixBalance;
 
             SyncMixerService();
+            InitDevices();
+
+            _deviceService.DefaultDeviceChanged += (s, dev) =>
+            {
+                App.Current?.Dispatcher?.Invoke(() =>
+                {
+                    _isInternalDeviceSwitch = true;
+                    try
+                    {
+                        ActiveEndpointName = dev.Name;
+                        SelectedMasterDevice = dev;
+                        if (_configService.Config.UseSameDeviceOnAllChannels)
+                        {
+                            SelectedGameDevice = dev;
+                            SelectedMediaDevice = dev;
+                            SelectedChatDevice = dev;
+                        }
+                    }
+                    finally
+                    {
+                        _isInternalDeviceSwitch = false;
+                    }
+                });
+            };
 
             _mixerService.MasterVolumeExternalChanged += OnMasterVolumeExternalChanged;
             _mixerService.ActiveSessions.CollectionChanged += (s, e) => RefreshCategorizedLists();
             RefreshCategorizedLists();
+        }
+
+        private void InitDevices()
+        {
+            var cfg = _configService.Config;
+            var defOut = _deviceService.CurrentDefaultDevice ?? PlaybackDevices.FirstOrDefault(d => d.IsDefault) ?? PlaybackDevices.FirstOrDefault();
+            var defIn = _deviceService.CurrentDefaultCaptureDevice ?? CaptureDevices.FirstOrDefault(d => d.IsDefault) ?? CaptureDevices.FirstOrDefault();
+
+            SelectedMasterDevice = PlaybackDevices.FirstOrDefault(d => d.Id == cfg.MasterDeviceId) ?? defOut;
+            SelectedGameDevice = PlaybackDevices.FirstOrDefault(d => d.Id == cfg.GameDeviceId) ?? defOut;
+            SelectedMediaDevice = PlaybackDevices.FirstOrDefault(d => d.Id == cfg.MediaDeviceId) ?? defOut;
+            SelectedChatDevice = PlaybackDevices.FirstOrDefault(d => d.Id == cfg.ChatDeviceId) ?? defOut;
+            SelectedMicDevice = CaptureDevices.FirstOrDefault(d => d.Id == cfg.MicDeviceId) ?? defIn;
+
+            if (SelectedMasterDevice != null)
+            {
+                ActiveEndpointName = SelectedMasterDevice.Name;
+            }
+        }
+
+        partial void OnSelectedMasterDeviceChanged(AudioDeviceModel? value)
+        {
+            if (_isInternalDeviceSwitch || value == null) return;
+            _configService.Config.MasterDeviceId = value.Id;
+            ActiveEndpointName = value.Name;
+            QueueSave();
+
+            if (_deviceService.CurrentDefaultDevice?.Id != value.Id)
+            {
+                _deviceService.SwitchToDevice(value.Id);
+            }
+
+            if (_configService.Config.UseSameDeviceOnAllChannels)
+            {
+                _isInternalDeviceSwitch = true;
+                try
+                {
+                    SelectedGameDevice = value;
+                    SelectedMediaDevice = value;
+                    SelectedChatDevice = value;
+                    _configService.Config.GameDeviceId = value.Id;
+                    _configService.Config.MediaDeviceId = value.Id;
+                    _configService.Config.ChatDeviceId = value.Id;
+                }
+                finally
+                {
+                    _isInternalDeviceSwitch = false;
+                }
+            }
+        }
+
+        partial void OnSelectedGameDeviceChanged(AudioDeviceModel? value)
+        {
+            if (_isInternalDeviceSwitch || value == null) return;
+            _configService.Config.GameDeviceId = value.Id;
+            QueueSave();
+        }
+
+        partial void OnSelectedMediaDeviceChanged(AudioDeviceModel? value)
+        {
+            if (_isInternalDeviceSwitch || value == null) return;
+            _configService.Config.MediaDeviceId = value.Id;
+            QueueSave();
+        }
+
+        partial void OnSelectedChatDeviceChanged(AudioDeviceModel? value)
+        {
+            if (_isInternalDeviceSwitch || value == null) return;
+            _configService.Config.ChatDeviceId = value.Id;
+            _deviceService.SetRoleEndpoint(value.Id, Services.Interop.ERole.eCommunications);
+            QueueSave();
+        }
+
+        partial void OnSelectedMicDeviceChanged(AudioDeviceModel? value)
+        {
+            if (_isInternalDeviceSwitch || value == null) return;
+            _configService.Config.MicDeviceId = value.Id;
+            _deviceService.SwitchCaptureDevice(value.Id);
+            QueueSave();
         }
 
         private void SyncMixerService()

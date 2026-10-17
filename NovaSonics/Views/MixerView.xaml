@@ -91,9 +91,22 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,10" PreviewMouseWheel="Master_MouseWheel">
-                        <TextBlock Text="🔊 MASTER" FontWeight="Bold" FontSize="14" Foreground="#F8FAFC" />
-                        <TextBlock Text="{Binding ActiveEndpointName, StringFormat='{}🔗 {0}'}" FontSize="10" Foreground="#64748B" TextTrimming="CharacterEllipsis" Margin="0,2,0,2"/>
-                        <TextBlock Text="{Binding MasterVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
+                        <Grid Margin="0,0,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="🔊 MASTER" FontWeight="Bold" FontSize="13" Foreground="#F8FAFC" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding MasterVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ComboBox ItemsSource="{Binding PlaybackDevices}" SelectedItem="{Binding SelectedMasterDevice, Mode=TwoWay}"
+                                  Height="26" FontSize="10" ToolTip="Select Output Device for Master">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
 
                     <!-- Slider + Peak Meter Track -->
@@ -174,16 +187,29 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,10" PreviewMouseWheel="Game_MouseWheel">
-                        <TextBlock Text="🎮 GAME" FontWeight="Bold" FontSize="14" Foreground="#00E5FF" />
-                        <TextBlock Text="{Binding ActiveEndpointName, StringFormat='{}🔗 {0}'}" FontSize="10" Foreground="#64748B" TextTrimming="CharacterEllipsis" Margin="0,2,0,2"/>
-                        <TextBlock Text="{Binding GameVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
+                        <Grid Margin="0,0,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="🎮 GAME" FontWeight="Bold" FontSize="13" Foreground="#00E5FF" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding GameVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ComboBox ItemsSource="{Binding PlaybackDevices}" SelectedItem="{Binding SelectedGameDevice, Mode=TwoWay}"
+                                  Height="26" FontSize="10" ToolTip="Select Output Device for Game">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
 
                     <!-- Slider + Peak Meter Track -->
                     <Grid Grid.Row="1" HorizontalAlignment="Center" PreviewMouseWheel="Game_MouseWheel">
                         <Border Width="6" Height="200" Background="#111317" CornerRadius="3" VerticalAlignment="Center">
                             <Border Width="6" Height="{Binding GamePeak, Converter={StaticResource PeakToHeightConverter}, ConverterParameter=200}"
-                                    Background="#00E5FF" CornerRadius="3" VerticalAlignment="Bottom" />
+                                     Background="#00E5FF" CornerRadius="3" VerticalAlignment="Bottom" />
                         </Border>
                         <Slider Style="{StaticResource SonarVerticalSlider}" Height="200" Value="{Binding GameVolume, Mode=TwoWay}" />
                     </Grid>
@@ -254,16 +280,29 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,10" PreviewMouseWheel="Media_MouseWheel">
-                        <TextBlock Text="🎵 MEDIA" FontWeight="Bold" FontSize="14" Foreground="#F59E0B" />
-                        <TextBlock Text="{Binding ActiveEndpointName, StringFormat='{}🔗 {0}'}" FontSize="10" Foreground="#64748B" TextTrimming="CharacterEllipsis" Margin="0,2,0,2"/>
-                        <TextBlock Text="{Binding MediaVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
+                        <Grid Margin="0,0,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="🎵 MEDIA" FontWeight="Bold" FontSize="13" Foreground="#F59E0B" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding MediaVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ComboBox ItemsSource="{Binding PlaybackDevices}" SelectedItem="{Binding SelectedMediaDevice, Mode=TwoWay}"
+                                  Height="26" FontSize="10" ToolTip="Select Output Device for Media">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
 
                     <!-- Slider + Peak Meter Track -->
                     <Grid Grid.Row="1" HorizontalAlignment="Center" PreviewMouseWheel="Media_MouseWheel">
                         <Border Width="6" Height="200" Background="#111317" CornerRadius="3" VerticalAlignment="Center">
                             <Border Width="6" Height="{Binding MediaPeak, Converter={StaticResource PeakToHeightConverter}, ConverterParameter=200}"
-                                    Background="#F59E0B" CornerRadius="3" VerticalAlignment="Bottom" />
+                                     Background="#F59E0B" CornerRadius="3" VerticalAlignment="Bottom" />
                         </Border>
                         <Slider Style="{StaticResource SonarVerticalSlider}" Height="200" Value="{Binding MediaVolume, Mode=TwoWay}" />
                     </Grid>
@@ -334,16 +373,29 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,10" PreviewMouseWheel="Chat_MouseWheel">
-                        <TextBlock Text="💬 CHAT" FontWeight="Bold" FontSize="14" Foreground="#A78BFA" />
-                        <TextBlock Text="{Binding ActiveEndpointName, StringFormat='{}🔗 {0}'}" FontSize="10" Foreground="#64748B" TextTrimming="CharacterEllipsis" Margin="0,2,0,2"/>
-                        <TextBlock Text="{Binding ChatVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
+                        <Grid Margin="0,0,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="💬 CHAT" FontWeight="Bold" FontSize="13" Foreground="#A78BFA" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding ChatVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ComboBox ItemsSource="{Binding PlaybackDevices}" SelectedItem="{Binding SelectedChatDevice, Mode=TwoWay}"
+                                  Height="26" FontSize="10" ToolTip="Select Output Device for Voice Chat">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
 
                     <!-- Slider + Peak Meter Track -->
                     <Grid Grid.Row="1" HorizontalAlignment="Center" PreviewMouseWheel="Chat_MouseWheel">
                         <Border Width="6" Height="200" Background="#111317" CornerRadius="3" VerticalAlignment="Center">
                             <Border Width="6" Height="{Binding ChatPeak, Converter={StaticResource PeakToHeightConverter}, ConverterParameter=200}"
-                                    Background="#A78BFA" CornerRadius="3" VerticalAlignment="Bottom" />
+                                     Background="#A78BFA" CornerRadius="3" VerticalAlignment="Bottom" />
                         </Border>
                         <Slider Style="{StaticResource SonarVerticalSlider}" Height="200" Value="{Binding ChatVolume, Mode=TwoWay}" />
                     </Grid>
@@ -414,9 +466,22 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,10" PreviewMouseWheel="Mic_MouseWheel">
-                        <TextBlock Text="🎤 MIC" FontWeight="Bold" FontSize="14" Foreground="#10B981" />
-                        <TextBlock Text="🔗 Default Capture Endpoint" FontSize="10" Foreground="#64748B" TextTrimming="CharacterEllipsis" Margin="0,2,0,2"/>
-                        <TextBlock Text="{Binding MicVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
+                        <Grid Margin="0,0,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="🎤 MIC" FontWeight="Bold" FontSize="13" Foreground="#10B981" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding MicVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ComboBox ItemsSource="{Binding CaptureDevices}" SelectedItem="{Binding SelectedMicDevice, Mode=TwoWay}"
+                                  Height="26" FontSize="10" ToolTip="Select Input Device for Microphone">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
 
                     <!-- Slider + Peak Meter Track -->

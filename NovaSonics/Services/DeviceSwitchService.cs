@@ -16,7 +16,9 @@ namespace NovaSonics.Services
         private bool _lastKnownHeadsetOnline;
 
         public ObservableCollection<AudioDeviceModel> PlaybackDevices { get; } = new();
+        public ObservableCollection<AudioDeviceModel> CaptureDevices { get; } = new();
         public AudioDeviceModel? CurrentDefaultDevice { get; private set; }
+        public AudioDeviceModel? CurrentDefaultCaptureDevice { get; private set; }
 
         public event EventHandler<AudioDeviceModel>? DefaultDeviceChanged;
 
@@ -107,6 +109,46 @@ namespace NovaSonics.Services
                     }
                 }
 
+                string defaultCapId = string.Empty;
+                try
+                {
+                    using var defCap = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
+                    defaultCapId = defCap?.ID ?? string.Empty;
+                }
+                catch { }
+
+                var tempCaptureDevices = new List<AudioDeviceModel>();
+                try
+                {
+                    var capEndpoints = _enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+                    foreach (var ep in capEndpoints)
+                    {
+                        try
+                        {
+                            string friendlyName = ep.FriendlyName;
+                            bool isSonarVirtual = friendlyName.Contains("SteelSeries Sonar", StringComparison.OrdinalIgnoreCase);
+                            if (isSonarVirtual) continue;
+
+                            tempCaptureDevices.Add(new AudioDeviceModel
+                            {
+                                Id = ep.ID,
+                                Name = friendlyName,
+                                Description = ep.DeviceFriendlyName,
+                                IsDefault = (ep.ID == defaultCapId),
+                                IsActive = (ep.State == DeviceState.Active),
+                                IsExcluded = false,
+                                PriorityOrder = 0
+                            });
+                        }
+                        catch { }
+                        finally
+                        {
+                            ep.Dispose();
+                        }
+                    }
+                }
+                catch { }
+
                 System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
                 {
                     PlaybackDevices.Clear();
@@ -116,6 +158,16 @@ namespace NovaSonics.Services
                         if (d.IsDefault)
                         {
                             CurrentDefaultDevice = d;
+                        }
+                    }
+
+                    CaptureDevices.Clear();
+                    foreach (var c in tempCaptureDevices)
+                    {
+                        CaptureDevices.Add(c);
+                        if (c.IsDefault)
+                        {
+                            CurrentDefaultCaptureDevice = c;
                         }
                     }
                 });
@@ -138,6 +190,33 @@ namespace NovaSonics.Services
             }
             catch { }
             return false;
+        }
+
+        public bool SetRoleEndpoint(string deviceId, ERole role)
+        {
+            if (string.IsNullOrWhiteSpace(deviceId)) return false;
+            try
+            {
+                var client = new PolicyConfigClient();
+                if (client is IPolicyConfig policyConfig)
+                {
+                    policyConfig.SetDefaultEndpoint(deviceId, role);
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        public bool SwitchCaptureDevice(string deviceId)
+        {
+            if (string.IsNullOrWhiteSpace(deviceId)) return false;
+            bool ok = SetDefaultEndpointForAllRoles(deviceId);
+            if (ok)
+            {
+                RefreshDevices();
+            }
+            return ok;
         }
 
         public bool SwitchToDevice(string deviceId)

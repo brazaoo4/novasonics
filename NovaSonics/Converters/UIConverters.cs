@@ -82,4 +82,38 @@ namespace NovaSonics.Converters
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
     }
+
+    public class InverseBooleanConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return (value is bool b) ? !b : false;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+    }
+
+    public class DbFormatConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is float f) return $"{f:0.0} dB";
+            if (value is double d) return $"{d:0.0} dB";
+            return "0.0 dB";
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+    }
+
+    public class DecimalFormatConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is float f) return $"{f:0.00}";
+            if (value is double d) return $"{d:0.00}";
+            return "0.00";
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+    }
 }

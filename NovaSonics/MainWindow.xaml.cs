@@ -114,7 +114,7 @@ namespace NovaSonics
             {
                 _notifyIcon = new System.Windows.Forms.NotifyIcon
                 {
-                    Text = "NovaSonics - Arctis Nova 7 Suite",
+                    Text = "NovaSonics",
                     Visible = true
                 };
 
@@ -233,6 +233,21 @@ namespace NovaSonics
             {
                 Hide();
             }
+        }
+
+        private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState.Minimized;
+        }
+
+        private void MaximizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = (WindowState == WindowState.Maximized) ? WindowState.Normal : WindowState.Maximized;
+        }
+
+        private void CloseButton_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
         }
 
         private void ShowWindow()
