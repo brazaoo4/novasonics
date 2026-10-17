@@ -1,0 +1,11 @@
+global using Application = System.Windows.Application;
+global using UserControl = System.Windows.Controls.UserControl;
+global using Button = System.Windows.Controls.Button;
+global using MouseEventArgs = System.Windows.Input.MouseEventArgs;
+global using DragEventArgs = System.Windows.DragEventArgs;
+global using DataObject = System.Windows.DataObject;
+global using DragDropEffects = System.Windows.DragDropEffects;
+global using Point = System.Windows.Point;
+global using Color = System.Windows.Media.Color;
+global using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
+global using OpenFileDialog = Microsoft.Win32.OpenFileDialog;

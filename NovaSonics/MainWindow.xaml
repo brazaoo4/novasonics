@@ -1,0 +1,201 @@
+<Window x:Class="NovaSonics.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:NovaSonics.ViewModels"
+        xmlns:views="clr-namespace:NovaSonics.Views"
+        xmlns:conv="clr-namespace:NovaSonics.Converters"
+        mc:Ignorable="d"
+        Title="NovaSonics - Arctis Nova 7 Standalone Suite" 
+        Height="780" Width="1080"
+        MinHeight="650" MinWidth="900"
+        WindowStartupLocation="CenterScreen"
+        Background="#111317">
+
+    <Window.Resources>
+        <conv:BooleanToOnlineTextConverter x:Key="BooleanToOnlineTextConverter" />
+        <conv:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="64" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Top Header Navigation & Live Status Bar -->
+        <Border Grid.Row="0" Background="#181A20" BorderBrush="#252833" BorderThickness="0,0,0,1" Padding="20,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- App Brand + Tabs -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="NOVASONICS" FontWeight="Black" FontSize="17" Foreground="#00E5FF" VerticalAlignment="Center" Margin="0,0,24,0"/>
+
+                    <!-- Tab Buttons -->
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton Content="🎚️ Mixer" IsChecked="True" Width="100" Height="36" Margin="4,0"
+                                     Command="{Binding SelectTabCommand}" CommandParameter="0">
+                            <RadioButton.Style>
+                                <Style TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                    <Setter Property="Background" Value="#1E222B"/>
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                    <Setter Property="BorderBrush" Value="#2D3340"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter Property="Background" Value="#00E5FF"/>
+                                            <Setter Property="Foreground" Value="#0F172A"/>
+                                            <Setter Property="BorderBrush" Value="#00E5FF"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </RadioButton.Style>
+                        </RadioButton>
+
+                        <RadioButton Content="🔄 Devices" Width="100" Height="36" Margin="4,0"
+                                     Command="{Binding SelectTabCommand}" CommandParameter="1">
+                            <RadioButton.Style>
+                                <Style TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                    <Setter Property="Background" Value="#1E222B"/>
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                    <Setter Property="BorderBrush" Value="#2D3340"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter Property="Background" Value="#00E5FF"/>
+                                            <Setter Property="Foreground" Value="#0F172A"/>
+                                            <Setter Property="BorderBrush" Value="#00E5FF"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </RadioButton.Style>
+                        </RadioButton>
+
+                        <RadioButton Content="⚙️ Settings" Width="100" Height="36" Margin="4,0"
+                                     Command="{Binding SelectTabCommand}" CommandParameter="2">
+                            <RadioButton.Style>
+                                <Style TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                                    <Setter Property="Background" Value="#1E222B"/>
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                    <Setter Property="BorderBrush" Value="#2D3340"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter Property="Background" Value="#00E5FF"/>
+                                            <Setter Property="Foreground" Value="#0F172A"/>
+                                            <Setter Property="BorderBrush" Value="#00E5FF"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </RadioButton.Style>
+                        </RadioButton>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Live Arctis Nova 7 Status Badge -->
+                <Border Grid.Column="2" Background="#14161C" CornerRadius="8" Padding="12,6" VerticalAlignment="Center" BorderBrush="#252A36" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Headset Icon + Status -->
+                        <TextBlock Text="🎧 Nova 7:" FontWeight="Bold" FontSize="12" Foreground="#CBD5E1" VerticalAlignment="Center" Margin="0,0,6,0"/>
+
+                        <!-- Online / Offline State -->
+                        <TextBlock Text="{Binding HeadsetStatus.IsHeadsetOnline, Converter={StaticResource BooleanToOnlineTextConverter}}"
+                                   FontWeight="SemiBold" FontSize="12" Foreground="#34D399" VerticalAlignment="Center" Margin="0,0,12,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HeadsetStatus.IsHeadsetOnline}" Value="False">
+                                            <Setter Property="Foreground" Value="#94A3B8"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Battery Indicator -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                            <TextBlock Text="{Binding HeadsetStatus.BatteryPercent, StringFormat='{}🔋 {0}%'}"
+                                       FontWeight="Bold" FontSize="12" Foreground="#F8FAFC" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HeadsetStatus.IsCharging}" Value="True">
+                                                <Setter Property="Foreground" Value="#38BDF8"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <!-- Charging Bolt -->
+                            <TextBlock Text="⚡" FontWeight="Bold" FontSize="12" Foreground="#38BDF8" VerticalAlignment="Center" Margin="4,0,0,0"
+                                       Visibility="{Binding HeadsetStatus.IsCharging, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        </StackPanel>
+
+                        <!-- Quick Sidetone Selector -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Sidetone:" FontSize="11" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ComboBox SelectedIndex="{Binding HardwareVM.SidetoneLevel, Mode=TwoWay}" Width="80" Height="26" FontSize="11">
+                                <ComboBoxItem Content="Off" />
+                                <ComboBoxItem Content="Low" />
+                                <ComboBoxItem Content="Med" />
+                                <ComboBoxItem Content="High" />
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Main Views (Tab Switched) -->
+        <Grid Grid.Row="1">
+            <!-- 0. MIXER VIEW -->
+            <views:MixerView DataContext="{Binding MixerVM}">
+                <views:MixerView.Style>
+                    <Style TargetType="views:MixerView">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding SelectedTabIndex}" Value="0">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </views:MixerView.Style>
+            </views:MixerView>
+
+            <!-- 1. DEVICE MANAGER VIEW -->
+            <views:DeviceManagerView DataContext="{Binding DeviceManagerVM}">
+                <views:DeviceManagerView.Style>
+                    <Style TargetType="views:DeviceManagerView">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding SelectedTabIndex}" Value="1">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </views:DeviceManagerView.Style>
+            </views:DeviceManagerView>
+
+            <!-- 2. HARDWARE VIEW -->
+            <views:HardwareView DataContext="{Binding HardwareVM}">
+                <views:HardwareView.Style>
+                    <Style TargetType="views:HardwareView">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding SelectedTabIndex}" Value="2">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </views:HardwareView.Style>
+            </views:HardwareView>
+        </Grid>
+    </Grid>
+</Window>

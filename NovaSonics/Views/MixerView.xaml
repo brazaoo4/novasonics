@@ -1,0 +1,393 @@
+<UserControl x:Class="NovaSonics.Views.MixerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:vm="clr-namespace:NovaSonics.ViewModels"
+             xmlns:conv="clr-namespace:NovaSonics.Converters"
+             mc:Ignorable="d" 
+             d:DataContext="{d:DesignInstance Type=vm:MixerViewModel}"
+             d:DesignHeight="700" d:DesignWidth="1000"
+             Background="Transparent">
+
+    <UserControl.Resources>
+        <conv:ChannelToBrushConverter x:Key="ChannelToBrushConverter" />
+        <conv:PeakToHeightConverter x:Key="PeakToHeightConverter" />
+        <conv:FloatToPercentageConverter x:Key="FloatToPercentageConverter" />
+
+        <!-- Vertical Slider Style with Integrated Peak Meter Track -->
+        <Style x:Key="SonarVerticalSlider" TargetType="Slider">
+            <Setter Property="Orientation" Value="Vertical" />
+            <Setter Property="Minimum" Value="0" />
+            <Setter Property="Maximum" Value="1" />
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid HorizontalAlignment="Center">
+                            <!-- Track Background -->
+                            <Border Width="12" CornerRadius="6" Background="#16181D" BorderBrush="#2D3139" BorderThickness="1" />
+                            
+                            <!-- Track Fill Track -->
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static Slider.DecreaseLarge}">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate>
+                                                <Border Width="10" CornerRadius="5" Background="#2A3B4C" />
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate>
+                                                <Grid Width="32" Height="18">
+                                                    <Border Background="#E2E8F0" CornerRadius="4" BorderBrush="#00E5FF" BorderThickness="1">
+                                                        <Border.Effect>
+                                                            <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.5" Color="#00E5FF"/>
+                                                        </Border.Effect>
+                                                        <Rectangle Width="10" Height="2" Fill="#0F172A" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </Grid>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 4 Vertical Channels -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 1. MASTER STRIP -->
+            <Border Grid.Column="0" Background="#1C1F26" CornerRadius="8" Margin="6" Padding="14" BorderBrush="#262A34" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="240" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock Text="🔊 MASTER" FontWeight="Bold" FontSize="15" Foreground="#F8FAFC" />
+                        <TextBlock Text="{Binding MasterVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
+                    </StackPanel>
+
+                    <!-- Slider + Peak Meter Track -->
+                    <Grid Grid.Row="1" HorizontalAlignment="Center">
+                        <!-- Cyan Peak Meter Track -->
+                        <Border Width="6" Height="200" Background="#111317" CornerRadius="3" VerticalAlignment="Center">
+                            <Border Width="6" Height="{Binding MasterPeak, Converter={StaticResource PeakToHeightConverter}, ConverterParameter=200}"
+                                    Background="#00E5FF" CornerRadius="3" VerticalAlignment="Bottom" />
+                        </Border>
+                        <Slider Style="{StaticResource SonarVerticalSlider}" Height="200" Value="{Binding MasterVolume, Mode=TwoWay}" />
+                    </Grid>
+
+                    <!-- Mute Button -->
+                    <Button Grid.Row="2" Command="{Binding ToggleMasterMuteCommand}" Margin="0,10,0,10"
+                            Background="{Binding MasterMuted, Converter={x:Null}}" 
+                            BorderBrush="#334155" Height="36">
+                        <TextBlock Text="{Binding MasterMuted, Converter={x:Null}}" Foreground="White" FontWeight="SemiBold">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="🔊 Unmuted" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding MasterMuted}" Value="True">
+                                            <Setter Property="Text" Value="🔇 Muted" />
+                                            <Setter Property="Foreground" Value="#EF4444" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+
+                    <!-- App Routing Box (Apps to be routed) -->
+                    <Border Grid.Row="3" Background="#14161C" CornerRadius="6" Padding="8" BorderBrush="#222631" BorderThickness="1">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Apps to be routed" FontSize="11" Foreground="#64748B" Margin="0,0,0,6" FontWeight="SemiBold"/>
+                                <ItemsControl ItemsSource="{Binding MasterSessions}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#1E222B" CornerRadius="6" Padding="6,4" Margin="0,2" BorderBrush="#2D3340" BorderThickness="1">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding DisplayLabel}" Foreground="#E2E8F0" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                                        <Button Content="🎮" ToolTip="Assign to Game" Padding="2,0" FontSize="10" Margin="2,0"
+                                                                Command="{Binding DataContext.MoveAppToChannelCommand, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                                            <Button.CommandParameter>
+                                                                <MultiBinding Converter="{x:Null}">
+                                                                    <!-- Direct parameters handled in click -->
+                                                                </MultiBinding>
+                                                            </Button.CommandParameter>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- 2. GAME STRIP -->
+            <Border Grid.Column="1" Background="#1C1F26" CornerRadius="8" Margin="6" Padding="14" BorderBrush="#262A34" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="240" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock Text="🎮 GAME" FontWeight="Bold" FontSize="15" Foreground="#00E5FF" />
+                        <TextBlock Text="{Binding GameVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
+                    </StackPanel>
+
+                    <!-- Slider + Peak Meter Track -->
+                    <Grid Grid.Row="1" HorizontalAlignment="Center">
+                        <Border Width="6" Height="200" Background="#111317" CornerRadius="3" VerticalAlignment="Center">
+                            <Border Width="6" Height="{Binding GamePeak, Converter={StaticResource PeakToHeightConverter}, ConverterParameter=200}"
+                                    Background="#00E5FF" CornerRadius="3" VerticalAlignment="Bottom" />
+                        </Border>
+                        <Slider Style="{StaticResource SonarVerticalSlider}" Height="200" Value="{Binding GameVolume, Mode=TwoWay}" />
+                    </Grid>
+
+                    <Button Grid.Row="2" Command="{Binding ToggleGameMuteCommand}" Margin="0,10,0,10"
+                            BorderBrush="#334155" Height="36">
+                        <TextBlock Foreground="White" FontWeight="SemiBold">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="🔊 Unmuted" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding GameMuted}" Value="True">
+                                            <Setter Property="Text" Value="🔇 Muted" />
+                                            <Setter Property="Foreground" Value="#EF4444" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+
+                    <!-- Active Game Apps Box -->
+                    <Border Grid.Row="3" Background="#14161C" CornerRadius="6" Padding="8" BorderBrush="#00E5FF" BorderThickness="1"
+                            AllowDrop="True" Drop="GameApps_Drop">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Game / Media Apps" FontSize="11" Foreground="#00E5FF" Margin="0,0,0,6" FontWeight="SemiBold"/>
+                                <ItemsControl ItemsSource="{Binding GameSessions}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#1A2533" CornerRadius="6" Padding="6,4" Margin="0,2" BorderBrush="#00B4D8" BorderThickness="1"
+                                                    MouseMove="AppPill_MouseMove">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding DisplayLabel}" Foreground="#E0F2FE" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    <Button Grid.Column="2" Content="💬" ToolTip="Move to Chat" Padding="4,1" FontSize="10" Background="Transparent" BorderThickness="0"
+                                                            Click="MoveToChat_Click" Tag="{Binding}" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- 3. CHAT STRIP -->
+            <Border Grid.Column="2" Background="#1C1F26" CornerRadius="8" Margin="6" Padding="14" BorderBrush="#262A34" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="240" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock Text="💬 CHAT" FontWeight="Bold" FontSize="15" Foreground="#A78BFA" />
+                        <TextBlock Text="{Binding ChatVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
+                    </StackPanel>
+
+                    <!-- Slider + Peak Meter Track -->
+                    <Grid Grid.Row="1" HorizontalAlignment="Center">
+                        <Border Width="6" Height="200" Background="#111317" CornerRadius="3" VerticalAlignment="Center">
+                            <Border Width="6" Height="{Binding ChatPeak, Converter={StaticResource PeakToHeightConverter}, ConverterParameter=200}"
+                                    Background="#A78BFA" CornerRadius="3" VerticalAlignment="Bottom" />
+                        </Border>
+                        <Slider Style="{StaticResource SonarVerticalSlider}" Height="200" Value="{Binding ChatVolume, Mode=TwoWay}" />
+                    </Grid>
+
+                    <Button Grid.Row="2" Command="{Binding ToggleChatMuteCommand}" Margin="0,10,0,10"
+                            BorderBrush="#334155" Height="36">
+                        <TextBlock Foreground="White" FontWeight="SemiBold">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="🔊 Unmuted" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ChatMuted}" Value="True">
+                                            <Setter Property="Text" Value="🔇 Muted" />
+                                            <Setter Property="Foreground" Value="#EF4444" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+
+                    <!-- Active Chat Apps Box -->
+                    <Border Grid.Row="3" Background="#14161C" CornerRadius="6" Padding="8" BorderBrush="#8B5CF6" BorderThickness="1"
+                            AllowDrop="True" Drop="ChatApps_Drop">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Voice / Communication Apps" FontSize="11" Foreground="#A78BFA" Margin="0,0,0,6" FontWeight="SemiBold"/>
+                                <ItemsControl ItemsSource="{Binding ChatSessions}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#261E38" CornerRadius="6" Padding="6,4" Margin="0,2" BorderBrush="#8B5CF6" BorderThickness="1"
+                                                    MouseMove="AppPill_MouseMove">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding DisplayLabel}" Foreground="#EDE9FE" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    <Button Grid.Column="2" Content="🎮" ToolTip="Move to Game" Padding="4,1" FontSize="10" Background="Transparent" BorderThickness="0"
+                                                            Click="MoveToGame_Click" Tag="{Binding}" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- 4. MIC STRIP -->
+            <Border Grid.Column="3" Background="#1C1F26" CornerRadius="8" Margin="6" Padding="14" BorderBrush="#262A34" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="240" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock Text="🎤 MIC" FontWeight="Bold" FontSize="15" Foreground="#10B981" />
+                        <TextBlock Text="{Binding MicVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" />
+                    </StackPanel>
+
+                    <!-- Slider + Peak Meter Track -->
+                    <Grid Grid.Row="1" HorizontalAlignment="Center">
+                        <Border Width="6" Height="200" Background="#111317" CornerRadius="3" VerticalAlignment="Center">
+                            <Border Width="6" Height="{Binding MicPeak, Converter={StaticResource PeakToHeightConverter}, ConverterParameter=200}"
+                                    Background="#10B981" CornerRadius="3" VerticalAlignment="Bottom" />
+                        </Border>
+                        <Slider Style="{StaticResource SonarVerticalSlider}" Height="200" Value="{Binding MicVolume, Mode=TwoWay}" />
+                    </Grid>
+
+                    <Button Grid.Row="2" Command="{Binding ToggleMicMuteCommand}" Margin="0,10,0,10"
+                            BorderBrush="#334155" Height="36">
+                        <TextBlock Foreground="White" FontWeight="SemiBold">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="🎤 Unmuted" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding MicMuted}" Value="True">
+                                            <Setter Property="Text" Value="🔇 Muted" />
+                                            <Setter Property="Foreground" Value="#EF4444" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+
+                    <Border Grid.Row="3" Background="#14161C" CornerRadius="6" Padding="12" BorderBrush="#222631" BorderThickness="1">
+                        <TextBlock Text="ClearCast AI Noise Reduction Active via WASAPI Capture" TextWrapping="Wrap" FontSize="11" Foreground="#64748B" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"/>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Bottom CHATMIX Bar -->
+        <Border Grid.Row="1" Background="#181B22" CornerRadius="8" Margin="6,12,6,4" Padding="16,12" BorderBrush="#2A2F3D" BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="🎮 100% GAME" FontSize="12" FontWeight="Bold" Foreground="#00E5FF" Margin="0,0,12,0"/>
+                </StackPanel>
+
+                <!-- Center CHATMIX Slider -->
+                <Grid Grid.Column="1" Margin="10,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,6">
+                        <TextBlock Text="CHATMIX BALANCE" FontWeight="Bold" FontSize="12" Foreground="#CBD5E1"/>
+                        <TextBlock Text=" (Hardware Synchronized)" FontSize="11" Foreground="#64748B" Margin="6,0,0,0"/>
+                    </StackPanel>
+
+                    <!-- Horizontal Slider with Center Detent (0.0) -->
+                    <Slider Grid.Row="1" Minimum="-1.0" Maximum="1.0" Value="{Binding ChatMixBalance, Mode=TwoWay}"
+                            TickPlacement="BottomRight" TickFrequency="1.0" IsSnapToTickEnabled="False"/>
+                </Grid>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="100% CHAT 💬" FontSize="12" FontWeight="Bold" Foreground="#A78BFA" Margin="12,0,0,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>
