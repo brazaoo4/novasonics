@@ -179,10 +179,7 @@ namespace NovaSonics.ViewModels
                             OnPropertyChanged(nameof(SelectedChatDeviceId));
                             _configService.Save();
 
-                            var allApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                            foreach (var s in AllSessions) allApps.Add(s.ProcessName);
-                            foreach (var k in _configService.Config.AppChannelAssignments.Keys) allApps.Add(k);
-                            _routingService.RouteAppsToDevice(allApps, "DefaultRenderDevice");
+                            _routingService.ClearAllPersistedEndpoints();
                         }
                         else
                         {
@@ -201,6 +198,36 @@ namespace NovaSonics.ViewModels
 
             _mixerService.MasterVolumeExternalChanged += OnMasterVolumeExternalChanged;
             _mixerService.ActiveSessions.CollectionChanged += (s, e) => RefreshCategorizedLists();
+            RefreshCategorizedLists();
+        }
+
+        public void ReloadFromConfig()
+        {
+            var cfg = _configService.Config;
+            _isExternalUpdate = true;
+            try
+            {
+                MasterVolume = cfg.MasterVolume;
+                GameVolume = cfg.GameVolume;
+                MediaVolume = cfg.MediaVolume;
+                ChatVolume = cfg.ChatVolume;
+                MicVolume = cfg.MicVolume;
+
+                MasterMuted = cfg.MasterMuted;
+                GameMuted = cfg.GameMuted;
+                MediaMuted = cfg.MediaMuted;
+                ChatMuted = cfg.ChatMuted;
+                MicMuted = cfg.MicMuted;
+
+                ChatMixBalance = cfg.ChatMixBalance;
+            }
+            finally
+            {
+                _isExternalUpdate = false;
+            }
+
+            SyncMixerService();
+            RebindSelectedDevices();
             RefreshCategorizedLists();
         }
 
@@ -498,10 +525,7 @@ namespace NovaSonics.ViewModels
 
                     if (syncAll)
                     {
-                        var allApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                        foreach (var s in AllSessions) allApps.Add(s.ProcessName);
-                        foreach (var k in _configService.Config.AppChannelAssignments.Keys) allApps.Add(k);
-                        _routingService.RouteAppsToDevice(allApps, "DefaultRenderDevice");
+                        _routingService.ClearAllPersistedEndpoints();
                     }
 
                     _mixerService.RebindEndpoint();

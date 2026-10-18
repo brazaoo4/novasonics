@@ -81,6 +81,12 @@ namespace NovaSonics.ViewModels
             LoadProfile("Game");
         }
 
+        public void ReloadFromConfig()
+        {
+            LoadProfile(SelectedProfile);
+            AutoApplyToHeadset();
+        }
+
         [RelayCommand]
         public void SelectProfile(string profile)
         {

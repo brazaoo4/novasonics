@@ -55,6 +55,16 @@ namespace NovaSonics.ViewModels
             SyncListsFromService();
         }
 
+        public void ReloadFromConfig()
+        {
+            var cfg = _configService.Config;
+            AutoSwitchEnabled = cfg.AutoSwitchEnabled;
+            AutoSwitchAtBoot = cfg.AutoSwitchAtBoot;
+            AutoSwitchOnPowerOff = cfg.AutoSwitchOnPowerOff;
+            UseSameDeviceOnAllChannels = cfg.UseSameDeviceOnAllChannels;
+            RefreshLists();
+        }
+
         [RelayCommand]
         public void CleanVolumeMixer()
         {

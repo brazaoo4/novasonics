@@ -61,6 +61,16 @@ namespace NovaSonics.ViewModels
                 _mixerService.RebindEndpoint(d?.Id);
             };
 
+            _configService.ConfigImported += (s, e) =>
+            {
+                App.Current?.Dispatcher?.BeginInvoke(() =>
+                {
+                    MixerVM.ReloadFromConfig();
+                    DeviceManagerVM.ReloadFromConfig();
+                    EqualizerVM.ReloadFromConfig();
+                });
+            };
+
             _uiTimer = new DispatcherTimer
             {
                 Interval = TimeSpan.FromMilliseconds(33) // ~30 FPS
@@ -171,6 +181,7 @@ namespace NovaSonics.ViewModels
             SelectedTabIndex = index;
             if (index == 0)
             {
+                MixerVM.RebindSelectedDevices();
                 MixerVM.RefreshCategorizedLists();
             }
             else if (index == 1)

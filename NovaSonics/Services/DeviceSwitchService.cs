@@ -98,7 +98,7 @@ namespace NovaSonics.Services
                 var excludedList = _configService.Config.ExcludedDevices ?? new List<string>();
 
                 // Group endpoints by friendly name to eliminate duplicate ghost endpoints (e.g. multiple JBL NotPresent GUIDs)
-                var endpointList = new List<MMDevice>();
+                var endpointList = new List<(MMDevice Device, string FriendlyName)>();
                 foreach (var ep in endpoints)
                 {
                     try
@@ -109,7 +109,7 @@ namespace NovaSonics.Services
                             ep.Dispose();
                             continue;
                         }
-                        endpointList.Add(ep);
+                        endpointList.Add((ep, friendlyName));
                     }
                     catch
                     {
@@ -123,13 +123,18 @@ namespace NovaSonics.Services
 
                 foreach (var g in grouped)
                 {
-                    // Prefer Active endpoint if available, otherwise Unplugged/NotPresent
-                    var activeDev = g.FirstOrDefault(e => e.State == DeviceState.Active);
-                    var chosen = activeDev ?? g.FirstOrDefault(e => e.State != DeviceState.Disabled) ?? g.First();
-
                     try
                     {
-                        string friendlyName = chosen.FriendlyName;
+                        // Prefer Active endpoint if available, otherwise Unplugged/NotPresent
+                        var activeItem = g.FirstOrDefault(e => e.Device.State == DeviceState.Active);
+                        var chosenItem = activeItem.Device != null
+                            ? activeItem
+                            : (g.FirstOrDefault(e => e.Device.State != DeviceState.Disabled).Device != null
+                                ? g.FirstOrDefault(e => e.Device.State != DeviceState.Disabled)
+                                : g.First());
+
+                        var chosen = chosenItem.Device;
+                        string friendlyName = chosenItem.FriendlyName;
                         seenNames.Add(friendlyName);
                         bool isExcluded = excludedList.Any(ex => friendlyName.Contains(ex, StringComparison.OrdinalIgnoreCase));
 
@@ -182,9 +187,9 @@ namespace NovaSonics.Services
                     catch { }
                     finally
                     {
-                        foreach (var ep in g)
+                        foreach (var item in g)
                         {
-                            ep.Dispose();
+                            item.Device.Dispose();
                         }
                     }
                 }

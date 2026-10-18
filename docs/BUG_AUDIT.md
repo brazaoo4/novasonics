@@ -71,3 +71,30 @@ This document records all root causes discovered during the Phase 0A emergency c
 10. **BUG-QA-10: Windows Logoff Blocking (`MainWindow.xaml.cs`, `App.xaml.cs`)** — `[FIXED]`
     * **Finding**: `MainWindow.OnClosing` unconditionally set `e.Cancel = true` when `!_isExplicitExit && _configService.Config.StartMinimizedToTray`, blocking Windows Logoff/Restart if the window was open.
     * **Fix**: Subscribed to `OnSessionEnding` in `App.xaml.cs` (`IsSessionEnding = true`) and checked `!isSessionEnding` in `MainWindow.OnClosing`.
+
+---
+
+## Part 3: Post-Normalization Security, Concurrency & Native Resource Audit (v1.0.0)
+
+11. **BUG-QA-11: Cross-Thread `MMDeviceEnumerator` Access in `AudioRoutingService` (`AudioRoutingService.cs`)** — `[FIXED]`
+    * **Finding**: `RouteAppToDevice` and `RouteAppsToDevice` invoked `ResolveTargetDeviceId` on the caller thread before queuing `Task.Run`, while other callers invoked `RouteAppsToDevice` inside `Task.Run`, causing concurrent unsynchronized `_enumerator.EnumerateAudioEndPoints(...)` COM calls across STA and MTA threads.
+    * **Fix**: Added `_enumeratorLock` and `_disposed` guards around `_enumerator.EnumerateAudioEndPoints(...)` and moved `ResolveTargetDeviceId` inside the background `Task.Run` block.
+12. **BUG-QA-12: Stale Per-Process Routing Cache Across App Restarts & Sync Mode (`WasapiSessionMixer.cs`)** — `[FIXED]`
+    * **Finding**: `_lastRoutedDeviceByProcess` was keyed only by `procName` and never invalidated when an application exited and restarted with a new PID or when `ClearAllPersistedEndpoints()` was called, preventing restarted apps from being re-routed. Additionally, `SetAppChannel` routed apps even when `UseSameDeviceOnAllChannels` was `true`.
+    * **Fix**: Keyed `_lastRoutedDeviceByProcess` by `$"{pid}:{procName}"`, pruned exited PIDs on every `RefreshSessions()` pass, cleared the cache on `RebindEndpoint()`, and respected `UseSameDeviceOnAllChannels` inside `SetAppChannel`.
+13. **BUG-QA-13: Cross-Thread `ObservableCollection` Iteration in `MixerViewModel` (`MixerViewModel.cs`)** — `[FIXED]`
+    * **Finding**: `OnSelectedMasterDeviceChanged` iterated `AllSessions` (`ObservableCollection<AppSessionModel>` owned by the UI Dispatcher) inside a background `Task.Run` block, risking `InvalidOperationException` if `RefreshSessions()` modified `ActiveSessions` concurrently.
+    * **Fix**: Replaced manual `AllSessions` iteration and `RouteAppsToDevice(allApps, "DefaultRenderDevice")` with `_routingService.ClearAllPersistedEndpoints()`, which atomically clears all persisted endpoints via `IAudioPolicyConfigFactory::ClearAllPersistedApplicationEndpoints` (vtable Slot 27).
+14. **BUG-QA-14: Live ViewModel Refresh After Settings Import & Tab Switching (`ConfigService.cs`, `MainViewModel.cs`, `MixerViewModel.cs`, `DeviceManagerViewModel.cs`, `EqualizerViewModel.cs`)** — `[FIXED]`
+    * **Finding**: Importing a settings backup in `HardwareViewModel` updated `_configService.Config` on disk and in `HardwareViewModel`, but `MixerViewModel`, `DeviceManagerViewModel`, and `EqualizerViewModel` retained their previous in-memory values until app restart. Furthermore, toggling `"Sync all channels with default device"` in the `Devices` tab and switching back to `Mixer` did not rebind the per-channel device selectors because `MixerView` remains in the visual tree (`Visibility.Collapsed`).
+    * **Fix**: Added `ConfigImported` event to `IConfigService` and `ReloadFromConfig()` methods to `MixerViewModel`, `DeviceManagerViewModel`, and `EqualizerViewModel`, plus called `MixerVM.RebindSelectedDevices()` on `SelectTab(0)`.
+15. **BUG-QA-15: Native `Process` Handle & GDI+ `StringFormat` Leak in Periodic Tasks (`MainWindow.xaml.cs`)** — `[FIXED]`
+    * **Finding**: `TrimMemory()` (executed every 30 seconds) called `Process.GetCurrentProcess().Handle` without disposing the returned `Process` wrapper (`SafeProcessHandle`), and `RenderTrayIcon()` created a `System.Drawing.StringFormat` (wrapping a native GDI+ `GpStringFormat` handle) without `using`.
+    * **Fix**: Wrapped both `using var proc = Process.GetCurrentProcess();` and `using var sf = new StringFormat { ... };` in `using` statements.
+16. **BUG-QA-16: Unbounded JSON Config Import & Single-Instance Session Scope (`ConfigService.cs`, `App.xaml.cs`)** — `[FIXED]`
+    * **Finding**: `ConfigService.ImportConfig` called `File.ReadAllText(filePath)` without checking file length (allowing multi-gigabyte files to trigger OOM), and `App.xaml.cs` used `Global\` namespace for single-instance mutex/event IPC (which can collide across Windows Fast User Switching / RDP sessions). Also `_routingService` was not disposed in `App.OnExit`.
+    * **Fix**: Enforced a 2 MB maximum file size check in `ImportConfig`, scoped single-instance IPC primitives to `Local\`, and disposed `_routingService` in `App.OnExit`.
+17. **BUG-QA-17: Exception-Safe `MMDevice` Grouping in `DeviceSwitchService` (`DeviceSwitchService.cs`)** — `[FIXED]`
+    * **Finding**: `RefreshDevices()` called `endpointList.GroupBy(e => e.FriendlyName)` outside the per-device `try/finally` disposal loop, risking leaked `MMDevice` COM wrappers if a USB audio device disconnected between initial list population and `GroupBy` evaluation.
+    * **Fix**: Cached `(MMDevice Device, string FriendlyName)` tuples during the initial `try/catch` pass so `GroupBy` operates purely on managed strings.
+

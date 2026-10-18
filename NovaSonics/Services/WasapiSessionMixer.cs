@@ -389,6 +389,7 @@ namespace NovaSonics.Services
                         catch { }
                     }
 
+                    _lastRoutedDeviceByProcess.Clear();
                     UpdateCachedRenderDevices();
                     ApplyCaptureVolume();
                 }
@@ -754,6 +755,7 @@ namespace NovaSonics.Services
                                 }
 
                                 var assignedChannel = existing.Channel;
+                                string routeCacheKey = $"{pid}:{procName}";
                                 if (!_configService.Config.UseSameDeviceOnAllChannels)
                                 {
                                     string? targetDevId = assignedChannel switch
@@ -766,10 +768,10 @@ namespace NovaSonics.Services
 
                                     if (!string.IsNullOrEmpty(targetDevId))
                                     {
-                                        if (!_lastRoutedDeviceByProcess.TryGetValue(procName, out var prevDevId) ||
+                                        if (!_lastRoutedDeviceByProcess.TryGetValue(routeCacheKey, out var prevDevId) ||
                                             !string.Equals(prevDevId, targetDevId, StringComparison.OrdinalIgnoreCase))
                                         {
-                                            _lastRoutedDeviceByProcess[procName] = targetDevId;
+                                            _lastRoutedDeviceByProcess[routeCacheKey] = targetDevId;
                                             _routingService?.RouteAppToDevice(procName, targetDevId);
                                         }
                                     }
@@ -804,6 +806,19 @@ namespace NovaSonics.Services
                             {
                                 try { dev.Dispose(); } catch { }
                             }
+                        }
+                    }
+
+                    // Prune exited/stale PID entries from _lastRoutedDeviceByProcess
+                    if (_lastRoutedDeviceByProcess.Count > 0)
+                    {
+                        var activeRouteKeys = new HashSet<string>(
+                            newTracked.Where(t => !t.IsSystemSounds).Select(t => $"{t.ProcessId}:{t.ProcessName}"),
+                            StringComparer.OrdinalIgnoreCase);
+                        var staleRouteKeys = _lastRoutedDeviceByProcess.Keys.Where(k => !activeRouteKeys.Contains(k)).ToList();
+                        foreach (var k in staleRouteKeys)
+                        {
+                            _lastRoutedDeviceByProcess.Remove(k);
                         }
                     }
 
@@ -930,22 +945,39 @@ namespace NovaSonics.Services
             };
             _configService.Save();
 
-            // Route process to the channel's target device
-            string? targetDeviceId = channel switch
+            if (_configService.Config.UseSameDeviceOnAllChannels)
             {
-                AppChannel.Media => _configService.Config.MediaDeviceId,
-                AppChannel.Chat => _configService.Config.ChatDeviceId,
-                AppChannel.Game => _configService.Config.GameDeviceId,
-                _ => _configService.Config.MasterDeviceId
-            };
-
-            if (!string.IsNullOrEmpty(targetDeviceId))
-            {
-                _routingService?.RouteAppToDevice(session.ProcessName, targetDeviceId);
+                _routingService?.ResetAppToDefault(session.ProcessName);
             }
             else
             {
-                _routingService?.ResetAppToDefault(session.ProcessName);
+                // Route process to the channel's target device
+                string? targetDeviceId = channel switch
+                {
+                    AppChannel.Media => _configService.Config.MediaDeviceId,
+                    AppChannel.Chat => _configService.Config.ChatDeviceId,
+                    AppChannel.Game => _configService.Config.GameDeviceId,
+                    _ => _configService.Config.MasterDeviceId
+                };
+
+                if (!string.IsNullOrEmpty(targetDeviceId))
+                {
+                    lock (_sessionLock)
+                    {
+                        var matchingKeys = _lastRoutedDeviceByProcess.Keys
+                            .Where(k => k.EndsWith($":{session.ProcessName}", StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+                        foreach (var k in matchingKeys)
+                        {
+                            _lastRoutedDeviceByProcess[k] = targetDeviceId;
+                        }
+                    }
+                    _routingService?.RouteAppToDevice(session.ProcessName, targetDeviceId);
+                }
+                else
+                {
+                    _routingService?.ResetAppToDefault(session.ProcessName);
+                }
             }
 
             ApplyVolumes();

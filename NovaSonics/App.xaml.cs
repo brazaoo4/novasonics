@@ -12,8 +12,8 @@ namespace NovaSonics
     public partial class App : Application
     {
         public const string WindowMessageShowApp = "NovaSonics_ShowMainWindow";
-        public const string SingleInstanceMutexName = @"Global\NovaSonics_SingleInstance_Mutex";
-        public const string SingleInstanceEventName = @"Global\NovaSonics_ShowWindow_Event";
+        public const string SingleInstanceMutexName = @"Local\NovaSonics_SingleInstance_Mutex";
+        public const string SingleInstanceEventName = @"Local\NovaSonics_ShowWindow_Event";
         private const int HWND_BROADCAST = 0xFFFF;
 
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
@@ -26,6 +26,7 @@ namespace NovaSonics
         private static EventWaitHandle? _showWindowEvent;
         private CancellationTokenSource? _ipcCts;
         private ArctisNova7Device? _headsetService;
+        private AudioRoutingService? _routingService;
         private WasapiSessionMixer? _mixerService;
         private DeviceSwitchService? _deviceService;
         private ConfigService? _configService;
@@ -132,8 +133,8 @@ namespace NovaSonics
             _configService = new ConfigService();
             _notificationService = new ToastNotificationService();
             _headsetService = new ArctisNova7Device();
-            var routingService = new AudioRoutingService();
-            _mixerService = new WasapiSessionMixer(_configService, routingService);
+            _routingService = new AudioRoutingService();
+            _mixerService = new WasapiSessionMixer(_configService, _routingService);
             _deviceService = new DeviceSwitchService(_configService, _headsetService, _notificationService);
 
             // Sync Windows autostart registry entry with config
@@ -145,7 +146,7 @@ namespace NovaSonics
                 _deviceService,
                 _configService,
                 _notificationService,
-                routingService);
+                _routingService);
 
             _mainWindow = new MainWindow(mainVm, _configService);
 
@@ -183,6 +184,7 @@ namespace NovaSonics
             _headsetService?.Dispose();
             _mixerService?.Dispose();
             _deviceService?.Dispose();
+            _routingService?.Dispose();
             try { _singleInstanceMutex?.ReleaseMutex(); } catch { }
             _singleInstanceMutex?.Dispose();
             _singleInstanceMutex = null;

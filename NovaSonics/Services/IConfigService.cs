@@ -1,3 +1,4 @@
+using System;
 using NovaSonics.Models;
 
 namespace NovaSonics.Services
@@ -5,6 +6,7 @@ namespace NovaSonics.Services
     public interface IConfigService
     {
         NovaSonicsConfig Config { get; }
+        event EventHandler? ConfigImported;
 
         void Load();
         void Save();

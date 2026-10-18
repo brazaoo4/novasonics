@@ -11,6 +11,8 @@ namespace NovaSonics.Services
     public class AudioRoutingService : IAudioRoutingService, IDisposable
     {
         private readonly MMDeviceEnumerator _enumerator;
+        private readonly object _enumeratorLock = new();
+        private bool _disposed;
 
         public AudioRoutingService()
         {
@@ -33,33 +35,37 @@ namespace NovaSonics.Services
             }
 
             // If a friendly name was passed instead of an MMDevice.ID, resolve its exact MMDevice.ID
-            try
+            lock (_enumeratorLock)
             {
-                var endpoints = _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
-                string? matchedId = null;
-                foreach (var ep in endpoints)
+                if (_disposed) return deviceIdOrName;
+                try
                 {
-                    try
+                    var endpoints = _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+                    string? matchedId = null;
+                    foreach (var ep in endpoints)
                     {
-                        if (matchedId == null &&
-                            (string.Equals(ep.FriendlyName, deviceIdOrName, StringComparison.OrdinalIgnoreCase) ||
-                             ep.FriendlyName.Contains(deviceIdOrName, StringComparison.OrdinalIgnoreCase)))
+                        try
                         {
-                            matchedId = ep.ID;
+                            if (matchedId == null &&
+                                (string.Equals(ep.FriendlyName, deviceIdOrName, StringComparison.OrdinalIgnoreCase) ||
+                                 ep.FriendlyName.Contains(deviceIdOrName, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                matchedId = ep.ID;
+                            }
+                        }
+                        catch { }
+                        finally
+                        {
+                            ep.Dispose();
                         }
                     }
-                    catch { }
-                    finally
+                    if (!string.IsNullOrEmpty(matchedId))
                     {
-                        ep.Dispose();
+                        return matchedId;
                     }
                 }
-                if (!string.IsNullOrEmpty(matchedId))
-                {
-                    return matchedId;
-                }
+                catch { }
             }
-            catch { }
 
             return deviceIdOrName;
         }
@@ -75,9 +81,9 @@ namespace NovaSonics.Services
                 return;
             }
 
-            string? targetDeviceId = ResolveTargetDeviceId(targetDeviceIdOrName);
             Task.Run(() =>
             {
+                string? targetDeviceId = ResolveTargetDeviceId(targetDeviceIdOrName);
                 AudioPolicyConfigInterop.SetApplicationEndpoint(cleanProc, targetDeviceId, DataFlow.Render);
             });
         }
@@ -95,9 +101,9 @@ namespace NovaSonics.Services
 
             if (distinctProcs.Count == 0) return;
 
-            string? targetDeviceId = ResolveTargetDeviceId(targetDeviceIdOrName);
             Task.Run(() =>
             {
+                string? targetDeviceId = ResolveTargetDeviceId(targetDeviceIdOrName);
                 foreach (var p in distinctProcs)
                 {
                     AudioPolicyConfigInterop.SetApplicationEndpoint(p, targetDeviceId, DataFlow.Render);
@@ -120,7 +126,12 @@ namespace NovaSonics.Services
 
         public void Dispose()
         {
-            _enumerator?.Dispose();
+            lock (_enumeratorLock)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                try { _enumerator?.Dispose(); } catch { }
+            }
         }
     }
 }

@@ -68,7 +68,8 @@ namespace NovaSonics
                     GC.WaitForPendingFinalizers();
                     GC.Collect(2, GCCollectionMode.Forced, blocking: false, compacting: false);
                 }
-                IntPtr handle = Process.GetCurrentProcess().Handle;
+                using var proc = Process.GetCurrentProcess();
+                IntPtr handle = proc.Handle;
                 SetProcessWorkingSetSizeEx(handle, new IntPtr(-1), new IntPtr(-1), 0);
                 EmptyWorkingSet(handle);
             }
@@ -261,7 +262,7 @@ namespace NovaSonics
                     string label = !isOnline ? "--" : (batteryPercent >= 100 ? "99" : batteryPercent.ToString());
                     using var font = new Font("Segoe UI", 11f, System.Drawing.FontStyle.Bold, GraphicsUnit.Pixel);
                     using var textBrush = new SolidBrush(ringColor);
-                    var sf = new StringFormat
+                    using var sf = new StringFormat
                     {
                         Alignment = StringAlignment.Center,
                         LineAlignment = StringAlignment.Center

@@ -14,6 +14,7 @@ namespace NovaSonics.Services
         private readonly string _backupFilePath;
 
         public NovaSonicsConfig Config { get; private set; } = new();
+        public event EventHandler? ConfigImported;
 
         public ConfigService()
         {
@@ -171,12 +172,16 @@ namespace NovaSonics.Services
 
         public bool ImportConfig(string filePath)
         {
+            bool success = false;
             lock (_fileLock)
             {
                 try
                 {
                     if (File.Exists(filePath))
                     {
+                        var info = new FileInfo(filePath);
+                        if (info.Length <= 0 || info.Length > 2 * 1024 * 1024) return false;
+
                         string json = File.ReadAllText(filePath);
                         if (string.IsNullOrWhiteSpace(json)) return false;
                         var imported = JsonSerializer.Deserialize<NovaSonicsConfig>(json, JsonOptions);
@@ -185,13 +190,18 @@ namespace NovaSonics.Services
                             imported.ValidateAndSanitize();
                             Config = imported;
                             Save();
-                            return true;
+                            success = true;
                         }
                     }
                 }
                 catch { }
-                return false;
             }
+
+            if (success)
+            {
+                try { ConfigImported?.Invoke(this, EventArgs.Empty); } catch { }
+            }
+            return success;
         }
     }
 }
