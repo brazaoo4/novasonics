@@ -183,6 +183,32 @@ if (Test-Path $setupPath) {
     throw "Expected setup artifact $setupPath was not created."
 }
 
+# 9. Local Installation Sync
+Write-Host "`n[5/5] Updating local installed version..." -ForegroundColor Green
+$targetDirs = @(
+    "C:\Program Files\NovaSonics",
+    "$env:LOCALAPPDATA\Programs\NovaSonics"
+)
+
+$localUpdated = $false
+foreach ($targetDir in $targetDirs) {
+    if (Test-Path $targetDir) {
+        try {
+            Write-Host "  Attempting direct update to: $targetDir" -ForegroundColor Cyan
+            Copy-Item -Path "$publishDir\*" -Destination $targetDir -Recurse -Force -ErrorAction Stop
+            Write-Host "  -> Successfully updated local binaries in: $targetDir" -ForegroundColor Green
+            $localUpdated = $true
+        } catch {
+            Write-Warning "  Direct update to $targetDir requires administrator elevation."
+        }
+    }
+}
+
+if (-not $localUpdated) {
+    Write-Host "  Launching setup installer to apply updates locally..." -ForegroundColor Cyan
+    cmd.exe /c start "" $setupPath
+}
+
 Write-Host "`n=====================================================" -ForegroundColor Green
 Write-Host "             BUILD COMPLETED SUCCESSFULLY!           " -ForegroundColor Green
 Write-Host "=====================================================" -ForegroundColor Green
