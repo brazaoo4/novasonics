@@ -1,9 +1,12 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using System.Runtime;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
 using NovaSonics.Services;
@@ -17,8 +20,9 @@ namespace NovaSonics
         private readonly IConfigService _configService;
         private System.Windows.Forms.NotifyIcon? _notifyIcon;
         private bool _isExplicitExit;
-        private int _lastRenderedBattery = -2;
-        private bool _lastRenderedOnline = false;
+        private int _lastTrayBattery = -2;
+        private bool _lastTrayOnline = false;
+        private bool _lastTrayCharging = false;
         private IntPtr _hwnd;
 
         private const int WM_HOTKEY = 0x0312;
@@ -39,6 +43,40 @@ namespace NovaSonics
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern uint RegisterWindowMessage(string lpString);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("psapi.dll")]
+        private static extern bool EmptyWorkingSet(IntPtr hProcess);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetProcessWorkingSetSizeEx(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize, uint Flags);
+
+        public static void TrimMemory() => TrimMemory(true);
+
+        public static void TrimMemory(bool fullGc)
+        {
+            try
+            {
+                if (fullGc)
+                {
+                    GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+                    GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+                    GC.WaitForPendingFinalizers();
+                    GC.Collect(2, GCCollectionMode.Forced, blocking: false, compacting: false);
+                }
+                IntPtr handle = Process.GetCurrentProcess().Handle;
+                SetProcessWorkingSetSizeEx(handle, new IntPtr(-1), new IntPtr(-1), 0);
+                EmptyWorkingSet(handle);
+            }
+            catch { }
+        }
+
+        private uint _wmShowApp;
+
         public MainWindow(MainViewModel viewModel, IConfigService configService)
         {
             InitializeComponent();
@@ -58,6 +96,22 @@ namespace NovaSonics
             };
 
             SourceInitialized += MainWindow_SourceInitialized;
+
+            IsVisibleChanged += (s, e) => UpdateUiActiveState();
+            StateChanged += (s, e) => UpdateUiActiveState();
+
+            Task.Run(async () =>
+            {
+                await Task.Delay(1500).ConfigureAwait(false);
+                TrimMemory(fullGc: true);
+                await Task.Delay(2000).ConfigureAwait(false);
+                TrimMemory(fullGc: true);
+                while (!_isExplicitExit)
+                {
+                    await Task.Delay(30000).ConfigureAwait(false);
+                    TrimMemory(fullGc: false);
+                }
+            });
         }
 
         private void MainWindow_SourceInitialized(object? sender, EventArgs e)
@@ -65,6 +119,12 @@ namespace NovaSonics
             _hwnd = new WindowInteropHelper(this).Handle;
             var source = HwndSource.FromHwnd(_hwnd);
             source?.AddHook(HwndHook);
+
+            try
+            {
+                _wmShowApp = RegisterWindowMessage(App.WindowMessageShowApp);
+            }
+            catch { }
 
             // Register global shortcuts: Ctrl+Alt+Up (Prev Device), Ctrl+Alt+Down (Next Device),
             // Ctrl+Alt+OemPlus (Vol+), Ctrl+Alt+OemMinus (Vol-), Ctrl+Alt+M (Mute)
@@ -78,6 +138,13 @@ namespace NovaSonics
 
         private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
+            if (_wmShowApp != 0 && (uint)msg == _wmShowApp)
+            {
+                ShowWindow();
+                handled = true;
+                return IntPtr.Zero;
+            }
+
             if (msg == WM_HOTKEY)
             {
                 int id = wParam.ToInt32();
@@ -118,7 +185,7 @@ namespace NovaSonics
                     Visible = true
                 };
 
-                RenderTrayIcon(false, 0);
+                RenderTrayIcon(false, 0, false);
 
                 _notifyIcon.DoubleClick += (s, e) => ToggleWindow();
                 _notifyIcon.Click += (s, e) =>
@@ -143,14 +210,20 @@ namespace NovaSonics
             }
         }
 
-        private void RenderTrayIcon(bool isOnline, int batteryPercent)
+        private void RenderTrayIcon(bool isOnline, int batteryPercent, bool isCharging)
         {
             if (_notifyIcon == null) return;
-            if (_lastRenderedOnline == isOnline && _lastRenderedBattery == batteryPercent && _notifyIcon.Icon != null)
+            if (_lastTrayOnline == isOnline &&
+                _lastTrayBattery == batteryPercent &&
+                _lastTrayCharging == isCharging &&
+                _notifyIcon.Icon != null)
+            {
                 return;
+            }
 
-            _lastRenderedOnline = isOnline;
-            _lastRenderedBattery = batteryPercent;
+            _lastTrayOnline = isOnline;
+            _lastTrayBattery = batteryPercent;
+            _lastTrayCharging = isCharging;
 
             try
             {
@@ -165,6 +238,10 @@ namespace NovaSonics
                     if (!isOnline)
                     {
                         ringColor = System.Drawing.Color.FromArgb(0x64, 0x74, 0x8B); // Slate gray when offline
+                    }
+                    else if (isCharging)
+                    {
+                        ringColor = System.Drawing.Color.FromArgb(0x38, 0xBD, 0xF8); // Sky blue when charging
                     }
                     else if (batteryPercent <= _configService.Config.BatteryAlertThreshold)
                     {
@@ -217,8 +294,11 @@ namespace NovaSonics
                 string charging = hs.IsCharging ? " [⚡]" : "";
                 string tip = $"NovaSonics: {state} | {hs.BatteryPercent}%{charging}";
                 if (tip.Length > 63) tip = tip[..63];
-                _notifyIcon.Text = tip;
-                RenderTrayIcon(hs.IsHeadsetOnline, hs.BatteryPercent);
+                if (_notifyIcon.Text != tip)
+                {
+                    _notifyIcon.Text = tip;
+                }
+                RenderTrayIcon(hs.IsHeadsetOnline, hs.BatteryPercent, hs.IsCharging);
             }
             catch { }
         }
@@ -250,11 +330,40 @@ namespace NovaSonics
             Close();
         }
 
+        public void BringToFront()
+        {
+            ShowWindow();
+        }
+
+        public void PrepareForExit()
+        {
+            _isExplicitExit = true;
+            UnregisterHotkeys();
+            _notifyIcon?.Dispose();
+            _notifyIcon = null;
+        }
+
         private void ShowWindow()
         {
             Show();
             WindowState = WindowState.Normal;
             Activate();
+            Focus();
+            if (_hwnd != IntPtr.Zero)
+            {
+                try { SetForegroundWindow(_hwnd); } catch { }
+            }
+            UpdateUiActiveState();
+        }
+
+        private void UpdateUiActiveState()
+        {
+            bool isActive = IsVisible && (WindowState != WindowState.Minimized);
+            _viewModel.SetUiActive(isActive);
+            if (!isActive)
+            {
+                Task.Run(TrimMemory);
+            }
         }
 
         private void UnregisterHotkeys()
@@ -271,16 +380,14 @@ namespace NovaSonics
 
         private void ExitApplication()
         {
-            _isExplicitExit = true;
-            UnregisterHotkeys();
-            _notifyIcon?.Dispose();
-            _notifyIcon = null;
+            PrepareForExit();
             Application.Current.Shutdown();
         }
 
         protected override void OnClosing(CancelEventArgs e)
         {
-            if (!_isExplicitExit && _configService.Config.StartMinimizedToTray)
+            bool isSessionEnding = (Application.Current is App app) && app.IsSessionEnding;
+            if (!_isExplicitExit && !isSessionEnding && _configService.Config.StartMinimizedToTray)
             {
                 e.Cancel = true;
                 Hide();

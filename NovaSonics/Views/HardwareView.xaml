@@ -53,7 +53,7 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                             <TextBlock Text="⚙️ Settings &amp; Hardware Management" FontSize="16" FontWeight="Black" Foreground="#00E5FF"/>
                             <Border Background="#1E3A5F" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="Arctis Nova 7 Standalone" FontSize="10" FontWeight="Bold" Foreground="#38BDF8"/>
+                                <TextBlock Text="SteelSeries Nova Series" FontSize="10" FontWeight="Bold" Foreground="#38BDF8"/>
                             </Border>
                         </StackPanel>
                         <TextBlock Text="Configure onboard headset EEPROM registers over direct USB HID, customize battery warning thresholds, and manage backups."
@@ -174,13 +174,12 @@
                                         <TextBlock Text="Auto shutoff when no audio stream plays" FontSize="10" Foreground="#64748B" Margin="0,2,0,0"/>
                                     </StackPanel>
 
-                                    <ComboBox Grid.Column="1" SelectedValuePath="Tag" SelectedValue="{Binding InactiveTimerMinutes, Mode=TwoWay}" Height="28" FontSize="11">
-                                        <ComboBoxItem Content="Never" Tag="0" />
-                                        <ComboBoxItem Content="5 Minutes" Tag="5" />
-                                        <ComboBoxItem Content="15 Minutes" Tag="15" />
-                                        <ComboBoxItem Content="30 Minutes" Tag="30" />
-                                        <ComboBoxItem Content="60 Minutes" Tag="60" />
-                                    </ComboBox>
+                                    <ComboBox Grid.Column="1" 
+                                              ItemsSource="{Binding SleepTimerOptions}"
+                                              DisplayMemberPath="Display"
+                                              SelectedValuePath="Minutes"
+                                              SelectedValue="{Binding InactiveTimerMinutes, Mode=TwoWay}"
+                                              Height="28" FontSize="11" />
                                 </Grid>
                             </Border>
 
@@ -308,6 +307,26 @@
                             </StackPanel>
                         </CheckBox>
                     </Border>
+                </Grid>
+            </Border>
+
+            <!-- 5. About & Version -->
+            <Border Background="#181A20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="NOVASONICS" FontSize="13" FontWeight="Black" Foreground="#00E5FF"/>
+                            <Border Background="#1E293B" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding AppVersion}" FontSize="10" FontWeight="Bold" Foreground="#38BDF8"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Text="Lightweight native Windows audio mixer and hardware controller for SteelSeries Arctis Nova 7."
+                                   FontSize="11" Foreground="#94A3B8" Margin="0,4,0,0"/>
+                    </StackPanel>
                 </Grid>
             </Border>
 

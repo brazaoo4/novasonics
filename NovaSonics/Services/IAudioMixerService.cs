@@ -31,7 +31,8 @@ namespace NovaSonics.Services
         void Initialize();
         void RefreshSessions();
         void SetAppChannel(AppSessionModel app, AppChannel channel);
-        void RebindEndpoint();
+        void RebindEndpoint(string? targetDeviceId = null);
+        void SetActive(bool isActive);
 
         event EventHandler<(float volume, bool isMuted)>? MasterVolumeExternalChanged;
     }

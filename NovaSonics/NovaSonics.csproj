@@ -9,11 +9,21 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>NovaSonics</RootNamespace>
     <AssemblyName>NovaSonics</AssemblyName>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Product>NovaSonics</Product>
+    <Description>Lightweight native Windows audio mixer and hardware controller for SteelSeries Arctis Nova 7</Description>
+    <Copyright>Copyright © 2026</Copyright>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,6 +36,7 @@
   <ItemGroup>
     <None Update="Resources\default_app_categories.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
     <Resource Include="Resources\app.ico" />
   </ItemGroup>

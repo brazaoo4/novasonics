@@ -12,14 +12,25 @@ namespace NovaSonics.Views
         public MixerView()
         {
             InitializeComponent();
+            Loaded += (s, e) =>
+            {
+                if (DataContext is MixerViewModel vm)
+                {
+                    vm.RebindSelectedDevices();
+                }
+            };
         }
 
         private void AppPill_MouseMove(object sender, MouseEventArgs e)
         {
             if (e.LeftButton == MouseButtonState.Pressed && sender is FrameworkElement element && element.DataContext is AppSessionModel app)
             {
-                var data = new DataObject("AppSessionModel", app);
-                DragDrop.DoDragDrop(element, data, DragDropEffects.Move);
+                try
+                {
+                    var data = new DataObject("AppSessionModel", app);
+                    DragDrop.DoDragDrop(element, data, DragDropEffects.Move);
+                }
+                catch { }
             }
         }
 

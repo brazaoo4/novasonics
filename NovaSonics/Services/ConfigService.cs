@@ -7,9 +7,11 @@ namespace NovaSonics.Services
 {
     public class ConfigService : IConfigService
     {
+        private static readonly object _fileLock = new();
         private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
         private readonly string _configDirectory;
         private readonly string _configFilePath;
+        private readonly string _backupFilePath;
 
         public NovaSonicsConfig Config { get; private set; } = new();
 
@@ -17,77 +19,179 @@ namespace NovaSonics.Services
         {
             _configDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NovaSonics");
             _configFilePath = Path.Combine(_configDirectory, "config.json");
+            _backupFilePath = Path.Combine(_configDirectory, "config.bak.json");
             Load();
         }
 
         public void Load()
         {
-            try
+            lock (_fileLock)
             {
-                if (File.Exists(_configFilePath))
+                try
                 {
-                    string json = File.ReadAllText(_configFilePath);
-                    var loaded = JsonSerializer.Deserialize<NovaSonicsConfig>(json, JsonOptions);
-                    if (loaded != null)
+                    if (File.Exists(_configFilePath))
                     {
-                        Config = loaded;
-                        return;
+                        string json = File.ReadAllText(_configFilePath);
+                        if (!string.IsNullOrWhiteSpace(json))
+                        {
+                            var loaded = JsonSerializer.Deserialize<NovaSonicsConfig>(json, JsonOptions);
+                            if (loaded != null)
+                            {
+                                loaded.ValidateAndSanitize();
+                                Config = loaded;
+                                return;
+                            }
+                        }
+                    }
+
+                    // Check if a valid .tmp file exists from an interrupted swap
+                    string tmpFile = _configFilePath + ".tmp";
+                    if (File.Exists(tmpFile))
+                    {
+                        string tmpJson = File.ReadAllText(tmpFile);
+                        if (!string.IsNullOrWhiteSpace(tmpJson))
+                        {
+                            var loaded = JsonSerializer.Deserialize<NovaSonicsConfig>(tmpJson, JsonOptions);
+                            if (loaded != null)
+                            {
+                                loaded.ValidateAndSanitize();
+                                Config = loaded;
+                                File.Move(tmpFile, _configFilePath, overwrite: true);
+                                return;
+                            }
+                        }
+                    }
+
+                    // Check if a valid config.bak.json fallback exists
+                    if (File.Exists(_backupFilePath))
+                    {
+                        string bakJson = File.ReadAllText(_backupFilePath);
+                        if (!string.IsNullOrWhiteSpace(bakJson))
+                        {
+                            var loaded = JsonSerializer.Deserialize<NovaSonicsConfig>(bakJson, JsonOptions);
+                            if (loaded != null)
+                            {
+                                loaded.ValidateAndSanitize();
+                                Config = loaded;
+                                Save();
+                                return;
+                            }
+                        }
                     }
                 }
-            }
-            catch { }
+                catch (Exception)
+                {
+                    // If file is corrupted, preserve it as a backup rather than silently overwriting
+                    try
+                    {
+                        if (File.Exists(_configFilePath))
+                        {
+                            string corruptBackup = Path.Combine(_configDirectory, $"config.corrupt.{DateTime.UtcNow:yyyyMMddHHmmss}.json");
+                            File.Copy(_configFilePath, corruptBackup, overwrite: true);
+                        }
+                    }
+                    catch { }
 
-            Config = new NovaSonicsConfig();
-            Save();
+                    // Attempt recovery from config.bak.json
+                    try
+                    {
+                        if (File.Exists(_backupFilePath))
+                        {
+                            string bakJson = File.ReadAllText(_backupFilePath);
+                            var loaded = JsonSerializer.Deserialize<NovaSonicsConfig>(bakJson, JsonOptions);
+                            if (loaded != null)
+                            {
+                                loaded.ValidateAndSanitize();
+                                Config = loaded;
+                                Save();
+                                return;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                Config = new NovaSonicsConfig();
+                Config.ValidateAndSanitize();
+                Save();
+            }
         }
 
         public void Save()
         {
-            try
+            lock (_fileLock)
             {
-                if (!Directory.Exists(_configDirectory))
+                try
                 {
-                    Directory.CreateDirectory(_configDirectory);
-                }
+                    if (!Directory.Exists(_configDirectory))
+                    {
+                        Directory.CreateDirectory(_configDirectory);
+                    }
 
-                string json = JsonSerializer.Serialize(Config, JsonOptions);
-                File.WriteAllText(_configFilePath, json);
+                    Config.ValidateAndSanitize();
+                    string json = JsonSerializer.Serialize(Config, JsonOptions);
+                    string tmpFile = _configFilePath + ".tmp";
+
+                    using (var fs = new FileStream(tmpFile, FileMode.Create, FileAccess.Write, FileShare.None))
+                    using (var sw = new StreamWriter(fs))
+                    {
+                        sw.Write(json);
+                        sw.Flush();
+                        fs.Flush(true);
+                    }
+
+                    if (File.Exists(_configFilePath))
+                    {
+                        try { File.Copy(_configFilePath, _backupFilePath, overwrite: true); } catch { }
+                    }
+
+                    File.Move(tmpFile, _configFilePath, overwrite: true);
+                }
+                catch { }
             }
-            catch { }
         }
 
         public bool ExportConfig(string filePath)
         {
-            try
+            lock (_fileLock)
             {
-                string json = JsonSerializer.Serialize(Config, JsonOptions);
-                File.WriteAllText(filePath, json);
-                return true;
-            }
-            catch
-            {
-                return false;
+                try
+                {
+                    Config.ValidateAndSanitize();
+                    string json = JsonSerializer.Serialize(Config, JsonOptions);
+                    File.WriteAllText(filePath, json);
+                    return true;
+                }
+                catch
+                {
+                    return false;
+                }
             }
         }
 
         public bool ImportConfig(string filePath)
         {
-            try
+            lock (_fileLock)
             {
-                if (File.Exists(filePath))
+                try
                 {
-                    string json = File.ReadAllText(filePath);
-                    var imported = JsonSerializer.Deserialize<NovaSonicsConfig>(json, JsonOptions);
-                    if (imported != null)
+                    if (File.Exists(filePath))
                     {
-                        Config = imported;
-                        Save();
-                        return true;
+                        string json = File.ReadAllText(filePath);
+                        if (string.IsNullOrWhiteSpace(json)) return false;
+                        var imported = JsonSerializer.Deserialize<NovaSonicsConfig>(json, JsonOptions);
+                        if (imported != null)
+                        {
+                            imported.ValidateAndSanitize();
+                            Config = imported;
+                            Save();
+                            return true;
+                        }
                     }
                 }
+                catch { }
+                return false;
             }
-            catch { }
-            return false;
         }
     }
 }

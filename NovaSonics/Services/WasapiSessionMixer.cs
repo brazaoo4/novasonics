@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Interop;
@@ -16,17 +19,112 @@ using NovaSonics.Models;
 
 namespace NovaSonics.Services
 {
-    public class WasapiSessionMixer : IAudioMixerService
+    public class WasapiSessionMixer : IAudioMixerService, IMMNotificationClient, IDisposable
     {
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool DestroyIcon(IntPtr hIcon);
+
+        private class SessionEventClient : IAudioSessionEventsHandler
+        {
+            private readonly WasapiSessionMixer _mixer;
+
+            public SessionEventClient(WasapiSessionMixer mixer)
+            {
+                _mixer = mixer;
+            }
+
+            public void OnVolumeChanged(float volume, bool isMuted) { }
+            public void OnDisplayNameChanged(string displayName) { }
+            public void OnIconPathChanged(string iconPath) { }
+            public void OnChannelVolumeChanged(uint channelCount, IntPtr newVolumes, uint channelIndex) { }
+            public void OnGroupingParamChanged(ref Guid groupingId) { }
+            public void OnStateChanged(AudioSessionState state)
+            {
+                if (state == AudioSessionState.AudioSessionStateActive)
+                {
+                    _mixer.ApplyVolumes();
+                }
+            }
+            public void OnSessionDisconnected(AudioSessionDisconnectReason disconnectReason) { }
+        }
+
+        private class TrackedSession : IDisposable
+        {
+            public int ProcessId { get; set; }
+            public string ProcessName { get; set; } = string.Empty;
+            public bool IsSystemSounds { get; set; }
+            public AppChannel Channel { get; set; }
+            public AudioSessionControl Session { get; set; } = null!;
+            public AudioMeterInformation Meter { get; set; } = null!;
+            public SimpleAudioVolume Volume { get; set; } = null!;
+            public AppSessionModel? Model { get; set; }
+            public SessionEventClient? EventClient { get; set; }
+
+            public void Dispose()
+            {
+                if (EventClient != null)
+                {
+                    try { Session.UnRegisterEventClient(EventClient); } catch { }
+                }
+                try { Session.Dispose(); } catch { }
+            }
+        }
+
+        private class ProcessMetadata
+        {
+            public string FriendlyName { get; set; } = string.Empty;
+            public BitmapSource? Icon { get; set; }
+
+            public ProcessMetadata(string friendlyName, BitmapSource? icon)
+            {
+                FriendlyName = friendlyName;
+                Icon = icon;
+            }
+        }
+
         private readonly IConfigService _configService;
+        private readonly IAudioRoutingService? _routingService;
         private readonly MMDeviceEnumerator _enumerator;
         private MMDevice? _defaultRenderDevice;
+        private string _defaultRenderDeviceId = string.Empty;
         private MMDevice? _defaultCaptureDevice;
+        private readonly Dictionary<string, MMDevice> _cachedRenderDevices = new(StringComparer.OrdinalIgnoreCase);
         private DispatcherTimer? _peakTimer;
         private DispatcherTimer? _sessionRefreshTimer;
         private readonly object _sessionLock = new();
         private readonly Dictionary<int, string> _pidToProcessNameCache = new();
+        private readonly List<TrackedSession> _trackedSessions = new();
+        private readonly ConcurrentDictionary<string, ProcessMetadata> _processMetadataCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, DateTime> _inactiveSinceTracker = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _lastRoutedDeviceByProcess = new(StringComparer.OrdinalIgnoreCase);
         private bool _isUpdatingFromInternal;
+        private DateTime _lastInternalVolumeUpdateTime = DateTime.MinValue;
+
+        private static readonly Dictionary<string, string> _friendlyProcessNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            { "cmd", "Command Prompt" },
+            { "powershell", "PowerShell" },
+            { "pwsh", "PowerShell" },
+            { "conhost", "Console Window Host" },
+            { "explorer", "Windows Explorer" },
+            { "brave", "Brave Browser" },
+            { "steamwebhelper", "Steam" },
+            { "steam", "Steam" },
+            { "msedge", "Microsoft Edge" },
+            { "chrome", "Google Chrome" },
+            { "firefox", "Mozilla Firefox" },
+            { "discord", "Discord" },
+            { "spotify", "Spotify" },
+            { "vlc", "VLC Media Player" },
+            { "obs64", "OBS Studio" },
+            { "devenv", "Visual Studio" },
+            { "code", "Visual Studio Code" }
+        };
+
+        private static readonly HashSet<string> _transientProcesses = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "cmd", "powershell", "pwsh", "conhost", "bash", "wsl", "wslhost", "wt"
+        };
 
         public event EventHandler<(float volume, bool isMuted)>? MasterVolumeExternalChanged;
 
@@ -51,7 +149,12 @@ namespace NovaSonics.Services
         public float MasterVolume
         {
             get => _masterVolume;
-            set { _masterVolume = Math.Clamp(value, 0f, 1f); ApplyVolumes(); }
+            set
+            {
+                _masterVolume = Math.Clamp(value, 0f, 1f);
+                ApplyMasterEndpointVolume();
+                ApplyVolumes();
+            }
         }
         public float GameVolume
         {
@@ -77,7 +180,12 @@ namespace NovaSonics.Services
         public bool MasterMuted
         {
             get => _masterMuted;
-            set { _masterMuted = value; ApplyVolumes(); }
+            set
+            {
+                _masterMuted = value;
+                ApplyMasterEndpointVolume();
+                ApplyVolumes();
+            }
         }
         public bool GameMuted
         {
@@ -112,9 +220,10 @@ namespace NovaSonics.Services
         public float ChatPeak { get; private set; }
         public float MicPeak { get; private set; }
 
-        public WasapiSessionMixer(IConfigService configService)
+        public WasapiSessionMixer(IConfigService configService, IAudioRoutingService? routingService = null)
         {
             _configService = configService;
+            _routingService = routingService;
             _enumerator = new MMDeviceEnumerator();
 
             // Filter out audiodg system DSP isolation process from saved configuration
@@ -170,6 +279,12 @@ namespace NovaSonics.Services
 
         public void Initialize()
         {
+            try
+            {
+                _enumerator.RegisterEndpointNotificationCallback(this);
+            }
+            catch { }
+
             RebindEndpoint();
 
             _peakTimer = new DispatcherTimer
@@ -183,27 +298,75 @@ namespace NovaSonics.Services
             {
                 Interval = TimeSpan.FromSeconds(1)
             };
-            _sessionRefreshTimer.Tick += (s, e) => RefreshSessions();
+            _sessionRefreshTimer.Tick += (s, e) =>
+            {
+                try { RefreshSessions(); } catch { }
+            };
             _sessionRefreshTimer.Start();
         }
 
-        public void RebindEndpoint()
+        public void RebindEndpoint(string? targetDeviceId = null)
         {
+            var disp = Application.Current?.Dispatcher;
+            if (disp != null && !disp.CheckAccess())
+            {
+                disp.BeginInvoke(() => RebindEndpoint(targetDeviceId));
+                return;
+            }
+
             lock (_sessionLock)
             {
                 try
                 {
+                    // Dispose cached non-default devices first to prevent dangling RCW references
+                    foreach (var kvp in _cachedRenderDevices.ToList())
+                    {
+                        if (!string.Equals(kvp.Key, _defaultRenderDeviceId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            try { kvp.Value.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
+                            try { kvp.Value.Dispose(); } catch { }
+                        }
+                    }
+                    _cachedRenderDevices.Clear();
+
                     if (_defaultRenderDevice != null)
                     {
                         try { _defaultRenderDevice.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
                         try { _defaultRenderDevice.AudioEndpointVolume.OnVolumeNotification -= AudioEndpointVolume_OnVolumeNotification; } catch { }
-                        _defaultRenderDevice.Dispose();
+                        try { _defaultRenderDevice.Dispose(); } catch { }
                         _defaultRenderDevice = null;
+                        _defaultRenderDeviceId = string.Empty;
                     }
-                    _defaultCaptureDevice?.Dispose();
+                    try { _defaultCaptureDevice?.Dispose(); } catch { }
                     _defaultCaptureDevice = null;
 
-                    _defaultRenderDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(targetDeviceId))
+                        {
+                            _defaultRenderDevice = _enumerator.GetDevice(targetDeviceId);
+                            _defaultRenderDeviceId = _defaultRenderDevice?.ID ?? string.Empty;
+                        }
+                        else
+                        {
+                            _defaultRenderDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                            _defaultRenderDeviceId = _defaultRenderDevice?.ID ?? string.Empty;
+                        }
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            _defaultRenderDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                            _defaultRenderDeviceId = _defaultRenderDevice?.ID ?? string.Empty;
+                        }
+                        catch
+                        {
+                            _defaultRenderDevice = null;
+                            _defaultRenderDeviceId = string.Empty;
+                        }
+                    }
+
                     try
                     {
                         _defaultCaptureDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
@@ -212,8 +375,8 @@ namespace NovaSonics.Services
 
                     if (_defaultRenderDevice != null)
                     {
-                        _defaultRenderDevice.AudioSessionManager.OnSessionCreated += AudioSessionManager_OnSessionCreated;
-                        _defaultRenderDevice.AudioEndpointVolume.OnVolumeNotification += AudioEndpointVolume_OnVolumeNotification;
+                        try { _defaultRenderDevice.AudioSessionManager.OnSessionCreated += AudioSessionManager_OnSessionCreated; } catch { }
+                        try { _defaultRenderDevice.AudioEndpointVolume.OnVolumeNotification += AudioEndpointVolume_OnVolumeNotification; } catch { }
 
                         try
                         {
@@ -226,12 +389,85 @@ namespace NovaSonics.Services
                         catch { }
                     }
 
+                    UpdateCachedRenderDevices();
                     ApplyCaptureVolume();
                 }
                 catch { }
             }
 
-            RefreshSessions();
+            try { RefreshSessions(); } catch { }
+        }
+
+        private void UpdateCachedRenderDevices()
+        {
+            try
+            {
+                var neededIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (!string.IsNullOrEmpty(_defaultRenderDeviceId))
+                {
+                    neededIds.Add(_defaultRenderDeviceId);
+                }
+
+                void AddIfValid(string? devId)
+                {
+                    if (!string.IsNullOrWhiteSpace(devId) && !neededIds.Contains(devId))
+                    {
+                        neededIds.Add(devId);
+                    }
+                }
+
+                AddIfValid(_configService.Config.MasterDeviceId);
+                AddIfValid(_configService.Config.GameDeviceId);
+                AddIfValid(_configService.Config.MediaDeviceId);
+                AddIfValid(_configService.Config.ChatDeviceId);
+
+                // Remove devices no longer needed
+                var toRemove = _cachedRenderDevices.Keys.Where(k => !neededIds.Contains(k)).ToList();
+                foreach (var id in toRemove)
+                {
+                    if (_cachedRenderDevices.TryGetValue(id, out var dev))
+                    {
+                        if (!string.Equals(id, _defaultRenderDeviceId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            try { dev.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
+                            try { dev.Dispose(); } catch { }
+                        }
+                        _cachedRenderDevices.Remove(id);
+                    }
+                }
+
+                // Add or retain devices
+                foreach (var id in neededIds)
+                {
+                    if (!_cachedRenderDevices.ContainsKey(id))
+                    {
+                        if (!string.IsNullOrEmpty(_defaultRenderDeviceId) &&
+                            string.Equals(_defaultRenderDeviceId, id, StringComparison.OrdinalIgnoreCase) &&
+                            _defaultRenderDevice != null)
+                        {
+                            _cachedRenderDevices[id] = _defaultRenderDevice;
+                        }
+                        else
+                        {
+                            try
+                            {
+                                var dev = _enumerator.GetDevice(id);
+                                if (dev != null && dev.State == DeviceState.Active)
+                                {
+                                    dev.AudioSessionManager.OnSessionCreated += AudioSessionManager_OnSessionCreated;
+                                    _cachedRenderDevices[id] = dev;
+                                }
+                                else
+                                {
+                                    try { dev?.Dispose(); } catch { }
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+            }
+            catch { }
         }
 
         private void AudioEndpointVolume_OnVolumeNotification(AudioVolumeNotificationData data)
@@ -241,7 +477,15 @@ namespace NovaSonics.Services
             float newVol = data.MasterVolume;
             bool newMute = data.Muted;
 
-            if (Math.Abs(_masterVolume - newVol) > 0.005f || _masterMuted != newMute)
+            // Suppress echo of our own internal volume update within 150ms if volume is essentially identical
+            if ((DateTime.UtcNow - _lastInternalVolumeUpdateTime).TotalMilliseconds < 150 &&
+                Math.Abs(_masterVolume - newVol) < 0.005f &&
+                _masterMuted == newMute)
+            {
+                return;
+            }
+
+            if (Math.Abs(_masterVolume - newVol) > 0.002f || _masterMuted != newMute)
             {
                 _masterVolume = newVol;
                 _masterMuted = newMute;
@@ -252,132 +496,329 @@ namespace NovaSonics.Services
 
         private void AudioSessionManager_OnSessionCreated(object sender, IAudioSessionControl newSession)
         {
-            Application.Current?.Dispatcher?.InvokeAsync(RefreshSessions);
+            Application.Current?.Dispatcher?.InvokeAsync(() =>
+            {
+                try { RefreshSessions(); } catch { }
+            });
         }
 
         public void RefreshSessions()
         {
-            if (_defaultRenderDevice == null) return;
+            var disp = Application.Current?.Dispatcher;
+            if (disp != null && !disp.CheckAccess())
+            {
+                disp.BeginInvoke(RefreshSessions);
+                return;
+            }
 
             try
             {
+                try
+                {
+                    using var currentDef = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                    if (currentDef != null && !string.IsNullOrEmpty(currentDef.ID) &&
+                        !string.Equals(currentDef.ID, _defaultRenderDeviceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        RebindEndpoint(currentDef.ID);
+                    }
+                }
+                catch { }
+
                 List<AppSessionModel> snapshot;
+                var newTracked = new List<TrackedSession>();
                 lock (_sessionLock)
                 {
-                    _defaultRenderDevice.AudioSessionManager.RefreshSessions();
-                    var sessions = _defaultRenderDevice.AudioSessionManager.Sessions;
+                    UpdateCachedRenderDevices();
+                    if (_defaultRenderDevice == null && _cachedRenderDevices.Count == 0) return;
+
                     var currentModels = new Dictionary<string, AppSessionModel>(StringComparer.OrdinalIgnoreCase);
 
-                    for (int i = 0; i < sessions.Count; i++)
+                    foreach (var kvp in _cachedRenderDevices.ToList())
                     {
-                        using var s = sessions[i];
-                        if (s.State == AudioSessionState.AudioSessionStateExpired) continue;
-
-                        if (s.IsSystemSoundsSession)
-                        {
-                            string sysProc = "SystemSounds";
-                            if (!currentModels.ContainsKey(sysProc))
-                            {
-                                var channel = DetermineChannelForProcess(sysProc);
-                                currentModels[sysProc] = new AppSessionModel
-                                {
-                                    ProcessId = 0,
-                                    ProcessName = sysProc,
-                                    DisplayName = "System Sounds & Notifications",
-                                    Icon = null,
-                                    Channel = channel,
-                                    Volume = s.SimpleAudioVolume.Volume,
-                                    IsMuted = s.SimpleAudioVolume.Mute
-                                };
-                            }
-                            continue;
-                        }
-
-                        int pid = (int)s.GetProcessID;
-                        if (pid == 0) continue;
-
-                        string procName = string.Empty;
-                        string displayName = s.DisplayName;
-                        BitmapSource? icon = null;
-
-                        if (_pidToProcessNameCache.TryGetValue(pid, out string? cachedName))
-                        {
-                            procName = cachedName;
-                        }
-
+                        var dev = kvp.Value;
                         try
                         {
-                            using var proc = Process.GetProcessById(pid);
-                            if (string.IsNullOrEmpty(procName))
-                            {
-                                procName = proc.ProcessName;
-                                _pidToProcessNameCache[pid] = procName;
-                            }
+                            dev.AudioSessionManager.RefreshSessions();
+                            var sessions = dev.AudioSessionManager.Sessions;
 
-                            try
+                            for (int i = 0; i < sessions.Count; i++)
                             {
-                                if (string.IsNullOrWhiteSpace(displayName) && !string.IsNullOrWhiteSpace(proc.MainWindowTitle))
+                                var s = sessions[i];
+                                if (s.State == AudioSessionState.AudioSessionStateExpired)
                                 {
-                                    displayName = proc.MainWindowTitle;
+                                    try { s.Dispose(); } catch { }
+                                    continue;
                                 }
-                            }
-                            catch { }
 
-                            try
-                            {
-                                string? exePath = proc.MainModule?.FileName;
-                                if (!string.IsNullOrEmpty(exePath) && File.Exists(exePath))
+                                if (s.IsSystemSoundsSession)
                                 {
-                                    using var sysIcon = Icon.ExtractAssociatedIcon(exePath);
-                                    if (sysIcon != null)
+                                    string sysProc = "SystemSounds";
+                                    if (!currentModels.TryGetValue(sysProc, out var sysModel))
                                     {
-                                        icon = Imaging.CreateBitmapSourceFromHIcon(
-                                            sysIcon.Handle,
-                                            Int32Rect.Empty,
-                                            BitmapSizeOptions.FromWidthAndHeight(24, 24));
-                                        icon.Freeze();
+                                        var channel = DetermineChannelForProcess(sysProc);
+                                        sysModel = new AppSessionModel
+                                        {
+                                            ProcessId = 0,
+                                            ProcessName = sysProc,
+                                            DisplayName = "System Sounds & Notifications",
+                                            Icon = null,
+                                            Channel = channel,
+                                            Volume = s.SimpleAudioVolume.Volume,
+                                            IsMuted = s.SimpleAudioVolume.Mute
+                                        };
+                                        currentModels[sysProc] = sysModel;
+                                    }
+
+                                    var sysClient = new SessionEventClient(this);
+                                    try { s.RegisterEventClient(sysClient); } catch { }
+
+                                    newTracked.Add(new TrackedSession
+                                    {
+                                        ProcessId = 0,
+                                        ProcessName = sysProc,
+                                        IsSystemSounds = true,
+                                        Channel = sysModel.Channel,
+                                        Session = s,
+                                        Meter = s.AudioMeterInformation,
+                                        Volume = s.SimpleAudioVolume,
+                                        Model = sysModel,
+                                        EventClient = sysClient
+                                    });
+                                    continue;
+                                }
+
+                                int pid = (int)s.GetProcessID;
+                                if (pid == 0)
+                                {
+                                    try { s.Dispose(); } catch { }
+                                    continue;
+                                }
+
+                                Process? proc = null;
+                                try
+                                {
+                                    proc = Process.GetProcessById(pid);
+                                }
+                                catch
+                                {
+                                    try { s.Dispose(); } catch { }
+                                    continue;
+                                }
+
+                                try
+                                {
+                                    if (proc.HasExited)
+                                    {
+                                        proc.Dispose();
+                                        try { s.Dispose(); } catch { }
+                                        continue;
                                     }
                                 }
+                                catch (Win32Exception)
+                                {
+                                    // Access denied when checking HasExited on elevated/protected process; process is still alive
+                                }
+                                catch (InvalidOperationException)
+                                {
+                                    proc.Dispose();
+                                    try { s.Dispose(); } catch { }
+                                    continue;
+                                }
+
+                                string procName;
+                                try
+                                {
+                                    procName = proc.ProcessName;
+                                }
+                                catch
+                                {
+                                    proc.Dispose();
+                                    try { s.Dispose(); } catch { }
+                                    continue;
+                                }
+
+                                _pidToProcessNameCache[pid] = procName;
+
+                                if (string.IsNullOrWhiteSpace(procName) ||
+                                    string.Equals(procName, "audiodg", StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(procName, "audiodg.exe", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    proc.Dispose();
+                                    try { s.Dispose(); } catch { }
+                                    continue;
+                                }
+
+                                bool isActive = (s.State == AudioSessionState.AudioSessionStateActive);
+                                bool isPinned = _configService.Config.AppChannelAssignments.ContainsKey(procName);
+                                DateTime now = DateTime.UtcNow;
+
+                                if (isActive)
+                                {
+                                    _inactiveSinceTracker.Remove(procName);
+                                }
+                                else
+                                {
+                                    // Transient console sessions (cmd, powershell, etc.) that are inactive and not pinned are pruned immediately (or after >30s)
+                                    if (_transientProcesses.Contains(procName) && !isPinned)
+                                    {
+                                        if (!_inactiveSinceTracker.TryGetValue(procName, out var transSince))
+                                        {
+                                            _inactiveSinceTracker[procName] = now;
+                                        }
+                                        if ((now - _inactiveSinceTracker[procName]).TotalSeconds >= 0)
+                                        {
+                                            proc.Dispose();
+                                            try { s.Dispose(); } catch { }
+                                            continue;
+                                        }
+                                    }
+
+                                    // Other inactive sessions: prune if inactive for > 30 seconds and not explicitly pinned
+                                    if (!_inactiveSinceTracker.TryGetValue(procName, out var inactiveSince))
+                                    {
+                                        _inactiveSinceTracker[procName] = now;
+                                    }
+                                    else if ((now - inactiveSince).TotalSeconds > 30 && !isPinned)
+                                    {
+                                        proc.Dispose();
+                                        try { s.Dispose(); } catch { }
+                                        continue;
+                                    }
+                                }
+
+                                var meta = _processMetadataCache.GetOrAdd(procName, name =>
+                                {
+                                    string friendly = ResolveProcessDisplayName(proc, name);
+                                    BitmapSource? extractedIcon = null;
+
+                                    try
+                                    {
+                                        string? exePath = null;
+                                        try { exePath = proc.MainModule?.FileName; } catch { }
+
+                                        if (!string.IsNullOrEmpty(exePath) && File.Exists(exePath))
+                                        {
+                                            using var sysIcon = Icon.ExtractAssociatedIcon(exePath);
+                                            if (sysIcon != null)
+                                            {
+                                                IntPtr hIcon = sysIcon.Handle;
+                                                try
+                                                {
+                                                    var iconBmp = Imaging.CreateBitmapSourceFromHIcon(
+                                                        hIcon,
+                                                        Int32Rect.Empty,
+                                                        BitmapSizeOptions.FromWidthAndHeight(32, 32));
+                                                    iconBmp.Freeze();
+                                                    extractedIcon = iconBmp;
+                                                }
+                                                finally
+                                                {
+                                                    DestroyIcon(hIcon);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    catch { }
+
+                                    return new ProcessMetadata(friendly, extractedIcon);
+                                });
+
+                                proc.Dispose();
+
+                                string displayName = meta.FriendlyName;
+                                BitmapSource? icon = meta.Icon;
+
+                                if (!currentModels.TryGetValue(procName, out var existing))
+                                {
+                                    var channel = DetermineChannelForProcess(procName);
+                                    existing = new AppSessionModel
+                                    {
+                                        ProcessId = pid,
+                                        ProcessName = procName,
+                                        DisplayName = displayName,
+                                        Icon = icon,
+                                        Channel = channel,
+                                        Volume = s.SimpleAudioVolume.Volume,
+                                        IsMuted = s.SimpleAudioVolume.Mute
+                                    };
+                                    currentModels[procName] = existing;
+                                }
+                                else if (isActive)
+                                {
+                                    // Active session on this device takes precedence (e.g. playing on secondary device)
+                                    existing.ProcessId = pid;
+                                    existing.DisplayName = displayName;
+                                    if (icon != null && existing.Icon == null) existing.Icon = icon;
+                                    existing.Volume = s.SimpleAudioVolume.Volume;
+                                    existing.IsMuted = s.SimpleAudioVolume.Mute;
+                                }
+
+                                var assignedChannel = existing.Channel;
+                                if (!_configService.Config.UseSameDeviceOnAllChannels)
+                                {
+                                    string? targetDevId = assignedChannel switch
+                                    {
+                                        AppChannel.Media => _configService.Config.MediaDeviceId,
+                                        AppChannel.Chat => _configService.Config.ChatDeviceId,
+                                        AppChannel.Game => _configService.Config.GameDeviceId,
+                                        _ => _configService.Config.MasterDeviceId
+                                    };
+
+                                    if (!string.IsNullOrEmpty(targetDevId))
+                                    {
+                                        if (!_lastRoutedDeviceByProcess.TryGetValue(procName, out var prevDevId) ||
+                                            !string.Equals(prevDevId, targetDevId, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            _lastRoutedDeviceByProcess[procName] = targetDevId;
+                                            _routingService?.RouteAppToDevice(procName, targetDevId);
+                                        }
+                                    }
+                                }
+                                else if (_lastRoutedDeviceByProcess.Count > 0)
+                                {
+                                    _lastRoutedDeviceByProcess.Clear();
+                                }
+
+                                var client = new SessionEventClient(this);
+                                try { s.RegisterEventClient(client); } catch { }
+
+                                newTracked.Add(new TrackedSession
+                                {
+                                    ProcessId = pid,
+                                    ProcessName = procName,
+                                    IsSystemSounds = false,
+                                    Channel = assignedChannel,
+                                    Session = s,
+                                    Meter = s.AudioMeterInformation,
+                                    Volume = s.SimpleAudioVolume,
+                                    Model = existing,
+                                    EventClient = client
+                                });
                             }
-                            catch { }
                         }
                         catch
                         {
-                            // If Process.GetProcessById failed (e.g. sandboxed child process), use cached name if available
-                            if (string.IsNullOrEmpty(procName) && _pidToProcessNameCache.TryGetValue(pid, out var fallbackName))
+                            // Device invalidated or disconnected; remove from cache so it can be re-evaluated cleanly
+                            _cachedRenderDevices.Remove(kvp.Key);
+                            if (!string.Equals(kvp.Key, _defaultRenderDeviceId, StringComparison.OrdinalIgnoreCase))
                             {
-                                procName = fallbackName;
+                                try { dev.Dispose(); } catch { }
                             }
                         }
+                    }
 
-                        if (string.IsNullOrWhiteSpace(procName)) continue;
-                        if (string.Equals(procName, "audiodg", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(procName, "audiodg.exe", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
-                        if (string.IsNullOrWhiteSpace(displayName)) displayName = procName;
-
-                        if (!currentModels.ContainsKey(procName))
-                        {
-                            var channel = DetermineChannelForProcess(procName);
-                            currentModels[procName] = new AppSessionModel
-                            {
-                                ProcessId = pid,
-                                ProcessName = procName,
-                                DisplayName = displayName,
-                                Icon = icon,
-                                Channel = channel,
-                                Volume = s.SimpleAudioVolume.Volume,
-                                IsMuted = s.SimpleAudioVolume.Mute
-                            };
-                        }
+                    var oldTracked = _trackedSessions.ToList();
+                    _trackedSessions.Clear();
+                    _trackedSessions.AddRange(newTracked);
+                    foreach (var old in oldTracked)
+                    {
+                        old.Dispose();
                     }
 
                     snapshot = currentModels.Values.ToList();
                 }
 
-                Application.Current?.Dispatcher?.Invoke(() =>
+                Application.Current?.Dispatcher?.BeginInvoke(() =>
                 {
                     var toRemove = ActiveSessions.Where(a => !snapshot.Any(s => s.ProcessName.Equals(a.ProcessName, StringComparison.OrdinalIgnoreCase))).ToList();
                     foreach (var r in toRemove) ActiveSessions.Remove(r);
@@ -392,7 +833,9 @@ namespace NovaSonics.Services
                         else
                         {
                             existing.ProcessId = kv.ProcessId;
+                            existing.DisplayName = kv.DisplayName;
                             existing.Channel = kv.Channel;
+                            if (kv.Icon != null && existing.Icon == null) existing.Icon = kv.Icon;
                         }
                     }
                 });
@@ -400,6 +843,54 @@ namespace NovaSonics.Services
                 ApplyVolumes();
             }
             catch { }
+        }
+
+        private string ResolveProcessDisplayName(Process proc, string procName)
+        {
+            if (_friendlyProcessNames.TryGetValue(procName, out var friendly))
+            {
+                return friendly;
+            }
+
+            string? exePath = null;
+            try { exePath = proc.MainModule?.FileName; } catch { }
+
+            if (!string.IsNullOrEmpty(exePath) && File.Exists(exePath))
+            {
+                try
+                {
+                    var vi = FileVersionInfo.GetVersionInfo(exePath);
+                    if (!string.IsNullOrWhiteSpace(vi.FileDescription) &&
+                        !vi.FileDescription.Contains('\\') &&
+                        !vi.FileDescription.Contains('/') &&
+                        !vi.FileDescription.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return vi.FileDescription.Trim();
+                    }
+                }
+                catch { }
+            }
+
+            try
+            {
+                string? title = proc.MainWindowTitle;
+                if (!string.IsNullOrWhiteSpace(title) &&
+                    !title.Contains('\\') &&
+                    !title.Contains('/') &&
+                    !title.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+                    !title.StartsWith("@"))
+                {
+                    return title.Trim();
+                }
+            }
+            catch { }
+
+            if (procName.Length > 0)
+            {
+                return char.ToUpper(procName[0]) + (procName.Length > 1 ? procName.Substring(1) : "");
+            }
+
+            return procName;
         }
 
         private AppChannel DetermineChannelForProcess(string processName)
@@ -438,6 +929,25 @@ namespace NovaSonics.Services
                 _ => "master"
             };
             _configService.Save();
+
+            // Route process to the channel's target device
+            string? targetDeviceId = channel switch
+            {
+                AppChannel.Media => _configService.Config.MediaDeviceId,
+                AppChannel.Chat => _configService.Config.ChatDeviceId,
+                AppChannel.Game => _configService.Config.GameDeviceId,
+                _ => _configService.Config.MasterDeviceId
+            };
+
+            if (!string.IsNullOrEmpty(targetDeviceId))
+            {
+                _routingService?.RouteAppToDevice(session.ProcessName, targetDeviceId);
+            }
+            else
+            {
+                _routingService?.ResetAppToDefault(session.ProcessName);
+            }
+
             ApplyVolumes();
         }
 
@@ -452,24 +962,34 @@ namespace NovaSonics.Services
             catch { }
         }
 
-        public void ApplyVolumes()
+        private void ApplyMasterEndpointVolume()
         {
             if (_defaultRenderDevice == null) return;
+            try
+            {
+                _isUpdatingFromInternal = true;
+                _lastInternalVolumeUpdateTime = DateTime.UtcNow;
+                try
+                {
+                    _defaultRenderDevice.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(MasterVolume, 0f, 1f);
+                    _defaultRenderDevice.AudioEndpointVolume.Mute = MasterMuted;
+                }
+                finally
+                {
+                    _isUpdatingFromInternal = false;
+                }
+            }
+            catch { }
+        }
+
+        public void ApplyVolumes()
+        {
+            if (_defaultRenderDevice == null && _cachedRenderDevices.Count == 0) return;
 
             lock (_sessionLock)
             {
                 try
                 {
-                    _isUpdatingFromInternal = true;
-                    try
-                    {
-                        _defaultRenderDevice.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(MasterVolume, 0f, 1f);
-                        _defaultRenderDevice.AudioEndpointVolume.Mute = MasterMuted;
-                    }
-                    finally
-                    {
-                        _isUpdatingFromInternal = false;
-                    }
 
                     // Sonar-identical ChatMix attenuation curve:
                     // Balance in [-1.0 (Full Game/Media), +1.0 (Full Chat)]
@@ -480,93 +1000,45 @@ namespace NovaSonics.Services
                     float effectiveMediaVol = MediaMuted ? 0f : Math.Clamp(MediaVolume * gameAtten, 0f, 1f);
                     float effectiveChatVol = ChatMuted ? 0f : Math.Clamp(ChatVolume * chatAtten, 0f, 1f);
 
-                    var sessions = _defaultRenderDevice.AudioSessionManager.Sessions;
-                    for (int i = 0; i < sessions.Count; i++)
+                    for (int i = 0; i < _trackedSessions.Count; i++)
                     {
-                        using var s = sessions[i];
-                        if (s.State == AudioSessionState.AudioSessionStateExpired) continue;
-
-                        // Only adjust volume for active streaming sessions or system sounds.
-                        // Writing to inactive sessions causes Windows Audio Service to recreate
-                        // persistent PropertyStore entries and keeps phantom zombie sessions alive.
-                        if (!s.IsSystemSoundsSession && s.State != AudioSessionState.AudioSessionStateActive)
-                            continue;
-
-                        if (s.IsSystemSoundsSession)
+                        var ts = _trackedSessions[i];
+                        try
                         {
-                            var model = ActiveSessions.FirstOrDefault(a => a.ProcessName.Equals("SystemSounds", StringComparison.OrdinalIgnoreCase));
-                            var channel = model?.Channel ?? AppChannel.Game;
-                            if (channel == AppChannel.Game)
-                            {
-                                s.SimpleAudioVolume.Volume = effectiveGameVol;
-                                s.SimpleAudioVolume.Mute = GameMuted || MasterMuted;
-                            }
-                            else if (channel == AppChannel.Media)
-                            {
-                                s.SimpleAudioVolume.Volume = effectiveMediaVol;
-                                s.SimpleAudioVolume.Mute = MediaMuted || MasterMuted;
-                            }
-                            else if (channel == AppChannel.Chat)
-                            {
-                                s.SimpleAudioVolume.Volume = effectiveChatVol;
-                                s.SimpleAudioVolume.Mute = ChatMuted || MasterMuted;
-                            }
-                            continue;
-                        }
+                            var channel = ts.Model?.Channel ?? ts.Channel;
+                            float targetVol;
+                            bool targetMute;
 
-                        int pid = (int)s.GetProcessID;
-                        if (pid == 0) continue;
-
-                        var modelApp = ActiveSessions.FirstOrDefault(a => a.ProcessId == pid);
-                        if (modelApp == null)
-                        {
-                            string? resolvedProc = null;
-                            if (!_pidToProcessNameCache.TryGetValue(pid, out resolvedProc))
+                            switch (channel)
                             {
-                                try
-                                {
-                                    using var proc = Process.GetProcessById(pid);
-                                    resolvedProc = proc.ProcessName;
-                                    _pidToProcessNameCache[pid] = resolvedProc;
-                                }
-                                catch { }
+                                case AppChannel.Chat:
+                                    targetVol = effectiveChatVol;
+                                    targetMute = ChatMuted || MasterMuted;
+                                    break;
+                                case AppChannel.Media:
+                                    targetVol = effectiveMediaVol;
+                                    targetMute = MediaMuted || MasterMuted;
+                                    break;
+                                case AppChannel.Game:
+                                    targetVol = effectiveGameVol;
+                                    targetMute = GameMuted || MasterMuted;
+                                    break;
+                                default:
+                                    targetVol = Math.Clamp(MasterVolume, 0f, 1f);
+                                    targetMute = MasterMuted;
+                                    break;
                             }
 
-                            if (!string.IsNullOrEmpty(resolvedProc))
+                            if (Math.Abs(ts.Volume.Volume - targetVol) > 0.001f)
                             {
-                                modelApp = ActiveSessions.FirstOrDefault(a => a.ProcessName.Equals(resolvedProc, StringComparison.OrdinalIgnoreCase));
+                                ts.Volume.Volume = targetVol;
+                            }
+                            if (ts.Volume.Mute != targetMute)
+                            {
+                                ts.Volume.Mute = targetMute;
                             }
                         }
-
-                        if (modelApp != null)
-                        {
-                            if (modelApp.Channel == AppChannel.Chat)
-                            {
-                                s.SimpleAudioVolume.Volume = effectiveChatVol;
-                                s.SimpleAudioVolume.Mute = ChatMuted || MasterMuted;
-                            }
-                            else if (modelApp.Channel == AppChannel.Media)
-                            {
-                                s.SimpleAudioVolume.Volume = effectiveMediaVol;
-                                s.SimpleAudioVolume.Mute = MediaMuted || MasterMuted;
-                            }
-                            else if (modelApp.Channel == AppChannel.Game)
-                            {
-                                s.SimpleAudioVolume.Volume = effectiveGameVol;
-                                s.SimpleAudioVolume.Mute = GameMuted || MasterMuted;
-                            }
-                            else
-                            {
-                                s.SimpleAudioVolume.Volume = Math.Clamp(MasterVolume, 0f, 1f);
-                                s.SimpleAudioVolume.Mute = MasterMuted;
-                            }
-                        }
-                        else
-                        {
-                            // Unrecognized audio session defaults to Game channel (per Sonar architecture)
-                            s.SimpleAudioVolume.Volume = effectiveGameVol;
-                            s.SimpleAudioVolume.Mute = GameMuted || MasterMuted;
-                        }
+                        catch { }
                     }
                 }
                 catch { }
@@ -575,91 +1047,144 @@ namespace NovaSonics.Services
 
         private void PeakTimer_Tick(object? sender, EventArgs e)
         {
-            lock (_sessionLock)
+            try
             {
-                try
+                if (_defaultRenderDevice != null)
                 {
-                    if (_defaultRenderDevice != null)
+                    try { MasterPeak = _defaultRenderDevice.AudioMeterInformation.MasterPeakValue; } catch { }
+                }
+
+                float maxGamePeak = 0f;
+                float maxMediaPeak = 0f;
+                float maxChatPeak = 0f;
+
+                lock (_sessionLock)
+                {
+                    for (int i = 0; i < _trackedSessions.Count; i++)
                     {
-                        MasterPeak = _defaultRenderDevice.AudioMeterInformation.MasterPeakValue;
+                        var m = _trackedSessions[i].Model;
+                        if (m != null) m.PeakValue = 0f;
+                    }
 
-                        float maxGamePeak = 0f;
-                        float maxMediaPeak = 0f;
-                        float maxChatPeak = 0f;
+                    for (int i = 0; i < _trackedSessions.Count; i++)
+                    {
+                        var track = _trackedSessions[i];
+                        float peak = 0f;
+                        try { peak = track.Meter.MasterPeakValue; } catch { }
 
-                        var sessions = _defaultRenderDevice.AudioSessionManager.Sessions;
-                        for (int i = 0; i < sessions.Count; i++)
+                        if (track.Model != null && peak > track.Model.PeakValue)
                         {
-                            using var s = sessions[i];
-                            if (s.State == AudioSessionState.AudioSessionStateExpired) continue;
-
-                            float peak = 0f;
-                            try { peak = s.AudioMeterInformation.MasterPeakValue; } catch { }
-
-                            if (s.IsSystemSoundsSession)
-                            {
-                                var model = ActiveSessions.FirstOrDefault(a => a.ProcessName.Equals("SystemSounds", StringComparison.OrdinalIgnoreCase));
-                                if (model != null)
-                                {
-                                    model.PeakValue = peak;
-                                    var channel = model.Channel;
-                                    if (channel == AppChannel.Game && peak > maxGamePeak) maxGamePeak = peak;
-                                    else if (channel == AppChannel.Media && peak > maxMediaPeak) maxMediaPeak = peak;
-                                    else if (channel == AppChannel.Chat && peak > maxChatPeak) maxChatPeak = peak;
-                                }
-                                continue;
-                            }
-
-                            int pid = (int)s.GetProcessID;
-                            if (pid == 0) continue;
-
-                            var app = ActiveSessions.FirstOrDefault(a => a.ProcessId == pid);
-                            if (app != null)
-                            {
-                                app.PeakValue = peak;
-                                if (app.Channel == AppChannel.Chat)
-                                {
-                                    if (peak > maxChatPeak) maxChatPeak = peak;
-                                }
-                                else if (app.Channel == AppChannel.Media)
-                                {
-                                    if (peak > maxMediaPeak) maxMediaPeak = peak;
-                                }
-                                else if (app.Channel == AppChannel.Game)
-                                {
-                                    if (peak > maxGamePeak) maxGamePeak = peak;
-                                }
-                            }
+                            track.Model.PeakValue = peak;
                         }
 
-                        GamePeak = maxGamePeak;
-                        MediaPeak = maxMediaPeak;
-                        ChatPeak = maxChatPeak;
-                    }
-
-                    if (_defaultCaptureDevice != null)
-                    {
-                        MicPeak = _defaultCaptureDevice.AudioMeterInformation.MasterPeakValue;
+                        var channel = track.Model?.Channel ?? track.Channel;
+                        if (channel == AppChannel.Game && peak > maxGamePeak) maxGamePeak = peak;
+                        else if (channel == AppChannel.Media && peak > maxMediaPeak) maxMediaPeak = peak;
+                        else if (channel == AppChannel.Chat && peak > maxChatPeak) maxChatPeak = peak;
                     }
                 }
-                catch { }
+
+                GamePeak = maxGamePeak;
+                MediaPeak = maxMediaPeak;
+                ChatPeak = maxChatPeak;
+
+                if (_defaultCaptureDevice != null)
+                {
+                    try { MicPeak = _defaultCaptureDevice.AudioMeterInformation.MasterPeakValue; } catch { }
+                }
+            }
+            catch { }
+        }
+
+        public void SetActive(bool isActive)
+        {
+            if (isActive)
+            {
+                if (_peakTimer != null && !_peakTimer.IsEnabled)
+                {
+                    _peakTimer.Start();
+                }
+                if (_sessionRefreshTimer != null)
+                {
+                    _sessionRefreshTimer.Interval = TimeSpan.FromSeconds(1);
+                }
+            }
+            else
+            {
+                _peakTimer?.Stop();
+                MasterPeak = 0;
+                GamePeak = 0;
+                MediaPeak = 0;
+                ChatPeak = 0;
+                MicPeak = 0;
+                lock (_sessionLock)
+                {
+                    foreach (var s in ActiveSessions)
+                    {
+                        s.PeakValue = 0;
+                    }
+                }
+                if (_sessionRefreshTimer != null)
+                {
+                    _sessionRefreshTimer.Interval = TimeSpan.FromSeconds(5);
+                }
             }
         }
 
         public void Dispose()
         {
+            try { _enumerator.UnregisterEndpointNotificationCallback(this); } catch { }
             _peakTimer?.Stop();
             _sessionRefreshTimer?.Stop();
             _pidToProcessNameCache.Clear();
+
+            lock (_sessionLock)
+            {
+                foreach (var t in _trackedSessions)
+                {
+                    t.Dispose();
+                }
+                _trackedSessions.Clear();
+            }
+
+            foreach (var kvp in _cachedRenderDevices.ToList())
+            {
+                if (!string.Equals(kvp.Key, _defaultRenderDeviceId, StringComparison.OrdinalIgnoreCase))
+                {
+                    try { kvp.Value.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
+                    try { kvp.Value.Dispose(); } catch { }
+                }
+            }
+            _cachedRenderDevices.Clear();
+
             if (_defaultRenderDevice != null)
             {
                 try { _defaultRenderDevice.AudioEndpointVolume.OnVolumeNotification -= AudioEndpointVolume_OnVolumeNotification; } catch { }
-                _defaultRenderDevice.Dispose();
+                try { _defaultRenderDevice.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
+                try { _defaultRenderDevice.Dispose(); } catch { }
                 _defaultRenderDevice = null;
+                _defaultRenderDeviceId = string.Empty;
             }
             _defaultCaptureDevice?.Dispose();
             _defaultCaptureDevice = null;
             _enumerator?.Dispose();
         }
+
+        #region IMMNotificationClient Implementation
+        public void OnDeviceStateChanged(string deviceId, DeviceState newState) { }
+        public void OnDeviceAdded(string pwstrDeviceId) { }
+        public void OnDeviceRemoved(string deviceId) { }
+        public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
+        {
+            if (flow == DataFlow.Render && (role == Role.Multimedia || role == Role.Console))
+            {
+                if (!string.Equals(_defaultRenderDeviceId, defaultDeviceId, StringComparison.OrdinalIgnoreCase))
+                {
+                    RebindEndpoint(defaultDeviceId);
+                }
+            }
+        }
+        public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
+        #endregion
     }
 }

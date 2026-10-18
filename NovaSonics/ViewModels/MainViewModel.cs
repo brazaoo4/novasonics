@@ -24,6 +24,8 @@ namespace NovaSonics.ViewModels
         [ObservableProperty]
         private HeadsetStatusModel _headsetStatus;
 
+        public string AppVersion { get; } = $"v{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0"}";
+
         public MixerViewModel MixerVM { get; }
         public DeviceManagerViewModel DeviceManagerVM { get; }
         public EqualizerViewModel EqualizerVM { get; }
@@ -34,7 +36,8 @@ namespace NovaSonics.ViewModels
             IAudioMixerService mixerService,
             IDeviceSwitchService deviceService,
             IConfigService configService,
-            INotificationService notificationService)
+            INotificationService notificationService,
+            IAudioRoutingService routingService)
         {
             _headsetService = headsetService;
             _mixerService = mixerService;
@@ -44,7 +47,7 @@ namespace NovaSonics.ViewModels
 
             _headsetStatus = _headsetService.Status;
 
-            MixerVM = new MixerViewModel(_mixerService, _deviceService, _configService);
+            MixerVM = new MixerViewModel(_mixerService, _deviceService, _configService, routingService);
             DeviceManagerVM = new DeviceManagerViewModel(_deviceService, _configService, _notificationService);
             EqualizerVM = new EqualizerViewModel(_headsetService, _configService, _notificationService);
             HardwareVM = new HardwareViewModel(_headsetService, _configService, _notificationService);
@@ -55,7 +58,7 @@ namespace NovaSonics.ViewModels
 
             _deviceService.DefaultDeviceChanged += (s, d) =>
             {
-                _mixerService.RebindEndpoint();
+                _mixerService.RebindEndpoint(d?.Id);
             };
 
             _uiTimer = new DispatcherTimer
@@ -66,20 +69,62 @@ namespace NovaSonics.ViewModels
             {
                 MixerVM.UpdatePeaks();
             };
-            _uiTimer.Start();
+        }
 
-            // Start HID polling; initial poll will fire PowerStateChanged(isOnline) to enforce priority/fallback device safely
-            _headsetService.Start();
+        public void StartServices()
+        {
+            UpdateUiTimerState();
+
+            // Start device discovery and HID polling on background task so UI startup is sub-second
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    _deviceService.RefreshDevices();
+                    _headsetService.Start();
+                    _deviceService.EnforcePriorityDevice(_headsetService.Status.IsHeadsetOnline);
+                }
+                catch { }
+            });
+        }
+
+        private bool _isWindowActive = true;
+
+        public void SetUiActive(bool isWindowActive)
+        {
+            _isWindowActive = isWindowActive;
+            UpdateUiTimerState();
+        }
+
+        private void UpdateUiTimerState()
+        {
+            bool shouldRun = _isWindowActive && (SelectedTabIndex == 0);
+            if (shouldRun)
+            {
+                if (!_uiTimer.IsEnabled) _uiTimer.Start();
+                _mixerService.SetActive(true);
+            }
+            else
+            {
+                if (_uiTimer.IsEnabled) _uiTimer.Stop();
+                _mixerService.SetActive(false);
+                MixerVM.ResetPeaks();
+            }
+        }
+
+        partial void OnSelectedTabIndexChanged(int value)
+        {
+            UpdateUiTimerState();
         }
 
         private void OnHeadsetStatusUpdated(object? sender, HeadsetStatusModel status)
         {
-            App.Current.Dispatcher.Invoke(() =>
+            App.Current?.Dispatcher?.BeginInvoke(() =>
             {
                 HeadsetStatus = status;
                 OnPropertyChanged(nameof(HeadsetStatus));
 
-                // Check battery alert threshold (30%)
+                // Check battery alert threshold (30%) - only when online, not charging, and valid battery > 0
                 if (status.IsHeadsetOnline && !status.IsCharging && status.BatteryPercent > 0)
                 {
                     if (status.BatteryPercent <= _configService.Config.BatteryAlertThreshold)
@@ -95,7 +140,7 @@ namespace NovaSonics.ViewModels
                         _lowBatteryAlertFired = false;
                     }
                 }
-                else if (status.IsCharging)
+                else if (status.IsCharging || !status.IsHeadsetOnline)
                 {
                     _lowBatteryAlertFired = false;
                 }
@@ -104,17 +149,16 @@ namespace NovaSonics.ViewModels
 
         private void OnChatMixChanged(object? sender, float balance)
         {
-            App.Current.Dispatcher.Invoke(() =>
+            App.Current?.Dispatcher?.BeginInvoke(() =>
             {
-                MixerVM.ChatMixBalance = balance;
+                MixerVM.SetChatMixFromHardware(balance);
             });
         }
 
         private void OnPowerStateChanged(object? sender, bool isOnline)
         {
-            App.Current.Dispatcher.Invoke(() =>
+            App.Current?.Dispatcher?.BeginInvoke(() =>
             {
-                _deviceService.HandleHeadsetPowerStateChanged(isOnline);
                 DeviceManagerVM.RefreshLists();
             });
         }
@@ -131,7 +175,7 @@ namespace NovaSonics.ViewModels
             }
             else if (index == 1)
             {
-                DeviceManagerVM.RefreshLists();
+                System.Threading.Tasks.Task.Run(() => _deviceService.RefreshDevices());
             }
         }
     }

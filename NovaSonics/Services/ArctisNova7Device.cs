@@ -38,6 +38,8 @@ namespace NovaSonics.Services
         private int _activePid;
         private CancellationTokenSource? _cts;
         private readonly object _ioLock = new();
+        private readonly object _flashTimerLock = new();
+        private System.Threading.Timer? _flashCommitDebounceTimer;
         private float _previousBalance = float.NaN;
 
         public HeadsetStatusModel Status { get; } = new();
@@ -47,10 +49,64 @@ namespace NovaSonics.Services
         public event EventHandler<bool>? PowerStateChanged;
         public event EventHandler? SettingsSyncedFromDevice;
 
+        private volatile bool _isSuspended;
+
         public void Start()
         {
             if (_cts != null) return;
             _cts = new CancellationTokenSource();
+
+            try
+            {
+                Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
+            }
+            catch { }
+
+            try
+            {
+                if (EnsureConnected())
+                {
+                    byte[]? resp = SendAndReceiveCommand(0xB0);
+                    if (resp != null && resp.Length >= 8 && resp[1] == 0xB0)
+                    {
+                        byte connByte = resp[2];
+                        byte battByte = resp[3];
+                        byte chargeByte = resp[4];
+                        byte gameAtten = resp[5];
+                        byte chatAtten = resp[6];
+
+                        bool isOnline = (connByte == 0x03);
+                        Status.IsHeadsetOnline = isOnline;
+                        Status.IsCharging = isOnline && (chargeByte == 0x01);
+
+                        if (isOnline)
+                        {
+                            int pct = LegacyBatteryScalePids.Contains(_activePid)
+                                ? Math.Clamp(battByte * 25, 0, 100)
+                                : Math.Clamp((int)battByte, 0, 100);
+                            if (pct > 0)
+                            {
+                                Status.BatteryPercent = pct;
+                            }
+                        }
+
+                        int g = Math.Clamp((int)gameAtten, 0, 100);
+                        int c = Math.Clamp((int)chatAtten, 0, 100);
+                        Status.GameAttenuation = g;
+                        Status.ChatAttenuation = c;
+
+                        float rawBalance = (c - g) / 100.0f;
+                        rawBalance = Math.Clamp(rawBalance, -1.0f, 1.0f);
+                        Status.Balance = (Math.Abs(rawBalance) < 0.05f || (g >= 95 && c >= 95)) ? 0.0f : rawBalance;
+
+                        if (isOnline)
+                        {
+                            ReadHardwareSettingsFromDevice();
+                        }
+                    }
+                }
+            }
+            catch { }
 
             Task.Run(() => PollingLoop(_cts.Token));
             Task.Run(() => AsyncEventReaderLoop(_cts.Token));
@@ -60,7 +116,41 @@ namespace NovaSonics.Services
         {
             _cts?.Cancel();
             _cts = null;
+            try
+            {
+                Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+            }
+            catch { }
+            lock (_flashTimerLock)
+            {
+                _flashCommitDebounceTimer?.Dispose();
+                _flashCommitDebounceTimer = null;
+            }
             CloseStreams();
+        }
+
+        private void OnPowerModeChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs e)
+        {
+            if (e.Mode == Microsoft.Win32.PowerModes.Suspend)
+            {
+                _isSuspended = true;
+                CloseStreams();
+            }
+            else if (e.Mode == Microsoft.Win32.PowerModes.Resume)
+            {
+                Task.Run(async () =>
+                {
+                    // Allow USB root hubs and endpoints 2500ms to settle after system wake
+                    await Task.Delay(2500);
+                    _isSuspended = false;
+                    CloseStreams();
+                    EnsureConnected();
+                    if (_commandStream != null)
+                    {
+                        ReadHardwareSettingsFromDevice();
+                    }
+                });
+            }
         }
 
         private void CloseStreams()
@@ -111,6 +201,18 @@ namespace NovaSonics.Services
                         _commandStream.ReadTimeout = 500;
                         _commandStream.WriteTimeout = 500;
                         Status.IsDeviceConnected = true;
+                        Status.DeviceModelName = _activePid switch
+                        {
+                            0x22A1 or 0x227E or 0x2202 => "Nova 7",
+                            0x2206 or 0x229E or 0x22A5 => "Nova 7X",
+                            0x220A or 0x2298 or 0x22A7 => "Nova 7P",
+                            0x223A => "Nova 7 D4",
+                            0x2258 => "Nova 7 White",
+                            0x227A => "Nova 7 Dota2",
+                            0x12e0 or 0x12e2 or 0x12e4 or 0x12e6 => "Nova Pro",
+                            0x2234 or 0x2238 => "Nova 5",
+                            _ => "Arctis Nova"
+                        };
                     }
 
                     // 2. Locate Sync Interrupt Interface (UsagePage 0xFF00, MI_05 / Col02)
@@ -158,9 +260,16 @@ namespace NovaSonics.Services
         private void PollingLoop(CancellationToken token)
         {
             bool? previousOnline = null;
+            DateTime lastSettingsPollTime = DateTime.MinValue;
 
             while (!token.IsCancellationRequested)
             {
+                if (_isSuspended)
+                {
+                    Thread.Sleep(1000);
+                    continue;
+                }
+
                 try
                 {
                     if (!EnsureConnected())
@@ -230,8 +339,14 @@ namespace NovaSonics.Services
                             if (isOnline)
                             {
                                 ReadHardwareSettingsFromDevice();
+                                lastSettingsPollTime = DateTime.UtcNow;
                             }
                             PowerStateChanged?.Invoke(this, isOnline);
+                        }
+                        else if (isOnline && (DateTime.UtcNow - lastSettingsPollTime).TotalMilliseconds >= 5000)
+                        {
+                            ReadHardwareSettingsFromDevice();
+                            lastSettingsPollTime = DateTime.UtcNow;
                         }
 
                         StatusUpdated?.Invoke(this, Status);
@@ -240,10 +355,20 @@ namespace NovaSonics.Services
                 catch
                 {
                     CloseStreams();
+                    Status.IsDeviceConnected = false;
+                    if (previousOnline != false)
+                    {
+                        previousOnline = false;
+                        Status.IsHeadsetOnline = false;
+                        PowerStateChanged?.Invoke(this, false);
+                    }
+                    StatusUpdated?.Invoke(this, Status);
                 }
 
-                // Poll every 250ms so ChatMix dial responsiveness and status stay crisp
-                Thread.Sleep(250);
+                // Adaptive polling: real-time dial turns (0x45), battery (0xB7), and power (0xB9)
+                // arrive instantly via _syncStream interrupt. Poll 0xB0 every 1000ms when online
+                // and back off to 2000ms when offline to save host CPU and HID bus traffic.
+                Thread.Sleep(Status.IsHeadsetOnline ? 1000 : 2000);
             }
         }
 
@@ -278,6 +403,12 @@ namespace NovaSonics.Services
             byte[] buffer = new byte[65];
             while (!token.IsCancellationRequested)
             {
+                if (_isSuspended)
+                {
+                    Thread.Sleep(1000);
+                    continue;
+                }
+
                 try
                 {
                     var stream = _syncStream;
@@ -374,7 +505,7 @@ namespace NovaSonics.Services
             }
         }
 
-        private void SendWriteAndSaveToFlash(byte commandId, params byte[] args)
+        private void SendWriteRegister(byte commandId, params byte[] args)
         {
             lock (_ioLock)
             {
@@ -389,15 +520,52 @@ namespace NovaSonics.Services
                 }
 
                 _commandStream.Write(packet, 0, packet.Length);
-                Thread.Sleep(30); // time-between-commands = 30ms per base_arctis_nova_7_gen2_tx.edevice
-
-                // Commit to non-volatile flash (0x09) + 1500ms firmware block delay per save_to_flash spec
-                byte[] savePacket = new byte[65];
-                savePacket[0] = 0x00;
-                savePacket[1] = 0x09;
-                _commandStream.Write(savePacket, 0, savePacket.Length);
-                Thread.Sleep(1500);
+                Thread.Sleep(15);
             }
+        }
+
+        private void QueueFlashCommit()
+        {
+            lock (_flashTimerLock)
+            {
+                _flashCommitDebounceTimer?.Dispose();
+                _flashCommitDebounceTimer = new System.Threading.Timer(_ =>
+                {
+                    _ = CommitToFlashInternalAsync();
+                }, null, 2500, Timeout.Infinite);
+            }
+        }
+
+        public Task CommitToFlashAsync()
+        {
+            lock (_flashTimerLock)
+            {
+                _flashCommitDebounceTimer?.Dispose();
+                _flashCommitDebounceTimer = null;
+            }
+            return CommitToFlashInternalAsync();
+        }
+
+        private Task CommitToFlashInternalAsync()
+        {
+            return Task.Run(() =>
+            {
+                lock (_ioLock)
+                {
+                    if (_commandStream == null || !Status.IsHeadsetOnline) return;
+
+                    try
+                    {
+                        Thread.Sleep(30);
+                        byte[] savePacket = new byte[65];
+                        savePacket[0] = 0x00;
+                        savePacket[1] = 0x09;
+                        _commandStream.Write(savePacket, 0, savePacket.Length);
+                        Thread.Sleep(1500); // Firmware block delay per save_to_flash spec
+                    }
+                    catch { }
+                }
+            });
         }
 
         public Task SetSidetoneAsync(int level)
@@ -405,7 +573,11 @@ namespace NovaSonics.Services
             // Command 0x39: Sidetone (0=Off, 1=Low, 2=Med, 3=High)
             byte val = (byte)Math.Clamp(level, 0, 3);
             Status.SidetoneLevel = val;
-            return Task.Run(() => SendWriteAndSaveToFlash(0x39, val));
+            return Task.Run(() =>
+            {
+                SendWriteRegister(0x39, val);
+                QueueFlashCommit();
+            });
         }
 
         public Task SetInactiveTimerAsync(int minutes)
@@ -413,7 +585,11 @@ namespace NovaSonics.Services
             // Command 0xA3: Inactivity Timer in minutes (0=Never, 1..255 minutes)
             byte val = (byte)Math.Clamp(minutes, 0, 255);
             Status.InactiveTimerMinutes = val;
-            return Task.Run(() => SendWriteAndSaveToFlash(0xA3, val));
+            return Task.Run(() =>
+            {
+                SendWriteRegister(0xA3, val);
+                QueueFlashCommit();
+            });
         }
 
         public Task SetMicMuteBrightnessAsync(int brightness)
@@ -421,7 +597,11 @@ namespace NovaSonics.Services
             // Command 0xAE: Muted Mic LED Brightness (0=Off, 1=Low, 2=Med, 3=High)
             byte val = (byte)Math.Clamp(brightness, 0, 3);
             Status.MicMuteBrightness = val;
-            return Task.Run(() => SendWriteAndSaveToFlash(0xAE, val));
+            return Task.Run(() =>
+            {
+                SendWriteRegister(0xAE, val);
+                QueueFlashCommit();
+            });
         }
 
         public Task SetMicVolumeLevelAsync(int level)
@@ -429,7 +609,11 @@ namespace NovaSonics.Services
             // Command 0x37: On-headset Hardware Mic Volume (0..7, default 7)
             byte val = (byte)Math.Clamp(level, 0, 7);
             Status.MicVolumeLevel = val;
-            return Task.Run(() => SendWriteAndSaveToFlash(0x37, val));
+            return Task.Run(() =>
+            {
+                SendWriteRegister(0x37, val);
+                QueueFlashCommit();
+            });
         }
 
         public Task SetVolumeLimiterAsync(bool enabled)
@@ -437,7 +621,11 @@ namespace NovaSonics.Services
             // Command 0x3A: EU Volume Limiter (0=Disabled 105dB max, 1=Enabled 99dB max)
             byte val = (byte)(enabled ? 1 : 0);
             Status.VolumeLimiterEnabled = enabled;
-            return Task.Run(() => SendWriteAndSaveToFlash(0x3A, val));
+            return Task.Run(() =>
+            {
+                SendWriteRegister(0x3A, val);
+                QueueFlashCommit();
+            });
         }
 
         public Task SetEqualizerBandsAsync(float[] bands)
@@ -446,21 +634,17 @@ namespace NovaSonics.Services
 
             return Task.Run(() =>
             {
-                lock (_ioLock)
+                // SteelSeries Arctis Nova 7 hardware 10-band Graphic EQ:
+                // 10 bands: 31Hz, 62Hz, 125Hz, 250Hz, 500Hz, 1kHz, 2kHz, 4kHz, 8kHz, 16kHz
+                // Scale: -10 dB to +10 dB mapped to 0..40 (0x00..0x28), with 0 dB = 20 (0x14)
+                byte[] args = new byte[10];
+                for (int i = 0; i < 10; i++)
                 {
-                    if (_commandStream == null) return;
-
-                    // SteelSeries Arctis Nova 7 hardware 10-band Graphic EQ:
-                    // 10 bands: 31Hz, 62Hz, 125Hz, 250Hz, 500Hz, 1kHz, 2kHz, 4kHz, 8kHz, 16kHz
-                    // Scale: -10 dB to +10 dB mapped to 0..40 (0x00..0x28), with 0 dB = 20 (0x14)
-                    byte[] args = new byte[10];
-                    for (int i = 0; i < 10; i++)
-                    {
-                        float clamped = Math.Clamp(bands[i], -10.0f, 10.0f);
-                        args[i] = (byte)Math.Clamp((int)Math.Round(2 * (10.0f + clamped)), 0, 40);
-                    }
-                    SendWriteAndSaveToFlash(0x33, args);
+                    float clamped = Math.Clamp(bands[i], -10.0f, 10.0f);
+                    args[i] = (byte)Math.Clamp((int)Math.Round(2 * (10.0f + clamped)), 0, 40);
                 }
+                SendWriteRegister(0x33, args);
+                QueueFlashCommit();
             });
         }
 

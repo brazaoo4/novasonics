@@ -20,8 +20,12 @@ namespace NovaSonics.Views
                 sender is FrameworkElement element &&
                 element.DataContext is AudioDeviceModel dev)
             {
-                var data = new DataObject("AudioDeviceModel", dev);
-                DragDrop.DoDragDrop(element, data, DragDropEffects.Move);
+                try
+                {
+                    var data = new DataObject("AudioDeviceModel", dev);
+                    DragDrop.DoDragDrop(element, data, DragDropEffects.Move);
+                }
+                catch { }
             }
         }
 

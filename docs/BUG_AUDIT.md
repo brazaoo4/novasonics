@@ -1,0 +1,73 @@
+# NovaSonics — Emergency Crash Root-Cause Analysis & Adversarial QA Bug Audit
+
+This document records all root causes discovered during the Phase 0A emergency crash investigation and the Phase 0B adversarial QA / static code audit, along with their verification status across Phases 1–5.
+
+---
+
+## Part 1: Root Causes of Emergency Crashes (Phase 0A)
+
+### 1. Startup Hang / Crash & Background Daemon Lockup (`App.xaml.cs`, `MainViewModel.cs`, `WasapiSessionMixer.cs`) — `[FIXED]`
+* **Symptom**: Launching `NovaSonics` either hung indefinitely on startup, exited silently without showing a window, or crashed with `System.InvalidCastException: Specified cast is not valid at NAudio.CoreAudioApi.Interfaces.IMMDevice.GetId(String& id)`.
+* **Root Causes**:
+  1. **Premature Timer & HID Thread Startup (`App.xaml.cs`, `MainViewModel.cs`)**: `_mixerService.Initialize()` (which started the 33ms `_peakTimer` and 1000ms `_sessionRefreshTimer`) and `_headsetService.Start()` (which performed synchronous blocking USB HID `0xB0`/`0x20`/`0xA0` I/O and started background polling threads) were invoked **before** `new MainWindow(...)` and before the UI visual tree was initialized.
+  2. **Synchronous `Dispatcher.Invoke` Deadlocks (`DeviceManagerViewModel.cs`, `MixerViewModel.cs`)**: Background threads (`PowerStateChanged`, `DefaultDeviceChanged`, `DevicesRefreshed`) invoked synchronous `Dispatcher.Invoke(...)` while the main UI thread was inside constructor initialization or COM calls, risking classic STA/MTA deadlocks.
+  3. **Cross-Thread STA/MTA COM Marshaling Crash (`WasapiSessionMixer.cs:339`, `crash.log`)**: `WasapiSessionMixer` created its `MMDeviceEnumerator` on the STA UI thread during construction, then accessed `MMDevice` RCW instances (`_defaultRenderDevice`, `_cachedRenderDevices`) across both MTA COM callback threads (`OnDefaultDeviceChanged`) and the STA `DispatcherTimer` thread without thread-local enumerator isolation, causing `InvalidCastException` (`E_NOINTERFACE` / `RPC_E_WRONG_THREAD`) in `StubHelpers.GetCOMIPFromRCW`.
+  4. **Orphaned Background Process Blocking Re-Launches (`App.xaml.cs`, `MainWindow.xaml.cs`)**: When the previous instance crashed or hid to tray before `SourceInitialized` registered `RegisterWindowMessage("NovaSonics_ShowMainWindow")`, `PostMessage(HWND_BROADCAST, wmShow, ...)` failed to wake the existing process, causing every subsequent launch attempt to exit at `Environment.Exit(0)` with no visible window.
+* **Fix**:
+  * Deferred `_mixerService.Initialize()` and `mainVm.StartServices()` until **after** `MainWindow` is constructed and shown.
+  * Moved initial `_headsetService.Start()` and `EnforcePriorityDevice()` onto a non-blocking background task.
+  * Added a named `EventWaitHandle` (`Global\NovaSonics_ShowWindow_Event`) listener thread alongside `Global\NovaSonics_SingleInstance_Mutex` so launching a second instance reliably wakes and focuses the main window even before `HwndHook` is active.
+  * Replaced all synchronous `Dispatcher.Invoke` calls with asynchronous `Dispatcher.BeginInvoke`.
+
+### 2. "Set Default Device" Immediate Crash (`IPolicyConfig.cs`, `DeviceSwitchService.cs`, `DeviceManagerViewModel.cs`) — `[FIXED]`
+* **Symptom**: Clicking `Set Default` on an audio device in the `Devices` tab or switching devices caused an immediate crash or re-entrant freeze.
+* **Root Causes**:
+  1. **Unmarshaled String Parameters in `IPolicyConfig` Vtable (`IPolicyConfig.cs`)**: Preceding vtable methods (`GetMixFormat`, `GetDeviceFormat`, `ResetDeviceFormat`, etc.) omitted `[In, MarshalAs(UnmanagedType.LPWStr)]` on `pszDeviceName`, and no fallback existed for `IPolicyConfigVista` (`{568b9108-44bf-40b4-9006-86afe5b5a620}`), nor was `Marshal.ReleaseComObject` called on `PolicyConfigClient`.
+  2. **Re-Entrant `IMMNotificationClient.OnDefaultDeviceChanged` Feedback Loop (`DeviceSwitchService.cs`)**: Calling `policyConfig.SetDefaultEndpoint` for `eConsole`, `eMultimedia`, and `eCommunications` immediately fires 3 synchronous/MTA `OnDefaultDeviceChanged` callbacks from Windows AudioSrv—often before `SetDefaultEndpointForAllRoles` even returns. `OnDefaultDeviceChanged` cleared `_pendingDefaultDeviceId` on the first role (`eConsole`) and then processed `eMultimedia` as an external change, firing `DefaultDeviceChanged` -> `MixerViewModel` -> `RebindEndpoint` concurrently with `SwitchToDevice`!
+  3. **Cross-Thread `ObservableCollection` Mutation in `SwitchCaptureDevice` (`DeviceSwitchService.cs:461`)**: `SwitchCaptureDevice` iterated and mutated `CaptureDevices` directly on a background thread (`Task.Run` from `MixerViewModel.OnSelectedMicDeviceChanged`) without `RunOnUI`.
+* **Fix**:
+  * Verified all 12 methods in `IPolicyConfig` in exact Windows 10/11 vtable order with explicit `[PreserveSig]` and `[In, MarshalAs(UnmanagedType.LPWStr)]`, added `IPolicyConfigVista` fallback, and released the COM object in a `finally` block.
+  * Added `_isSwitchingEndpoint` volatile guard flag and `_switchCooldownExpiry` timestamp in `DeviceSwitchService` to suppress self-triggered `OnDefaultDeviceChanged` callbacks across all 3 role switches.
+  * Wrapped `CaptureDevices` mutations in `SwitchCaptureDevice` inside `RunOnUI(...)`.
+
+---
+
+## Part 2: Adversarial QA & Deep Static Bug Hunt Findings (Phase 0B)
+
+### Category 1: Destructive User Input & UI Chaos (`Views/` & `ViewModels/`)
+1. **BUG-QA-01: Import Config Fuzzing & Out-of-Bounds Values (`ConfigService.cs`, `NovaSonicsConfig.cs`)** — `[FIXED]`
+   * **Finding**: Importing a JSON file with `MasterVolume: 99.0`, `ChatMixBalance: -50.0`, `NaN`/`Infinity` floats, `SidetoneLevel: 99`, `EqualizerBands` of length != 10, or `null` collections (`PriorityDevices: null`, `AppChannelAssignments: null`) left invalid state in `Config`, crashing sliders (`IndexOutOfRangeException` on `Bands[i]`) or sending invalid bytes over USB HID.
+   * **Fix**: Implemented `NovaSonicsConfig.ValidateAndSanitize()` and invoked it on every `Load()`, `Save()`, `ExportConfig()`, and `ImportConfig()`.
+2. **BUG-QA-02: Drag-and-Drop Stale Session / Same-Column Abuse (`MixerView.xaml.cs`, `MixerViewModel.cs`)** — `[FIXED]`
+   * **Finding**: If an application closes while its pill is mid-drag, or if the user drops a pill onto the column it already belongs to, `MoveAppToChannel` still re-saved config, spawned `SoundVolumeView.exe`, and re-assigned volumes for a dead session. Furthermore, `DragDrop.DoDragDrop` can throw `COMException` if the clipboard/OLE drag state is busy.
+   * **Fix**: Wrapped `DragDrop.DoDragDrop` in `try/catch` in both `MixerView.xaml.cs` and `DeviceManagerView.xaml.cs`. In `MixerViewModel.MoveAppToChannel`, verify the session is still present in `AllSessions` and `app.Channel != targetChannel` before executing routing.
+3. **BUG-QA-03: Priority List Empty / All Devices Offline Edge Case (`DeviceManagerViewModel.cs`, `DeviceSwitchService.cs`)** — `[FIXED]`
+   * **Finding**: Excluding every playback device or having all devices unplugged caused `SwitchNextDevice()` / `SwitchPreviousDevice()` or `EnforcePriorityDevice()` to operate on empty candidate lists.
+   * **Fix**: Guarded all index arithmetic with `candidates.Count == 0` checks and safe fallback when `CurrentDefaultDevice` is `null`.
+4. **BUG-QA-04: Two-Way Binding Feedback Loop on `ChatMixChanged` (`MainViewModel.cs`, `MixerViewModel.cs`)** — `[FIXED]`
+   * **Finding**: Every 1000ms when `ArctisNova7Device` polled `0xB0`, if `ChatMixChanged` fired, `MainViewModel` set `MixerVM.ChatMixBalance = balance`, triggering `OnChatMixBalanceChanged` -> `QueueSave()` even if the balance hadn't changed.
+   * **Fix**: Added `MixerViewModel.SetChatMixFromHardware(float balance)` with a `Math.Abs(ChatMixBalance - clamped) < 0.001f` deadband and `_isExternalUpdate` guard.
+
+### Category 2: OS & Audio Subsystem Chaos (`WasapiSessionMixer.cs`, `DeviceSwitchService.cs`, `AudioRoutingService.cs`)
+5. **BUG-QA-05: Cross-Thread COM `InvalidCastException` in `WasapiSessionMixer` (`WasapiSessionMixer.cs`)** — `[FIXED]`
+   * **Finding**: `IMMNotificationClient.OnDefaultDeviceChanged` runs on a Windows MTA thread pool thread and called `RebindEndpoint(defaultDeviceId)` directly, which instantiated `MMDevice` COM objects on the MTA thread and stored them in `_defaultRenderDevice` / `_cachedRenderDevices`. Subsequent access on the STA `DispatcherTimer` thread threw `System.InvalidCastException: Specified cast is not valid` inside `IMMDevice.GetId`.
+   * **Fix**: Marshal `WasapiSessionMixer.OnDefaultDeviceChanged` and `RebindEndpoint` to the Dispatcher thread (or synchronize COM enumeration cleanly) and catch `COMException` (`0x88890004` `AUDCLNT_E_DEVICE_INVALIDATED`, `0x80070490` `E_NOTFOUND`), `InvalidComObjectException`, and `InvalidCastException` on all COM calls.
+6. **BUG-QA-06: "Zero Audio Devices" State (`WasapiSessionMixer.cs`, `DeviceSwitchService.cs`)** — `[FIXED]`
+   * **Finding**: When GPU drivers update and no render/capture endpoints exist, `GetDefaultAudioEndpoint` throws `COMException` (`0x80070490` Element not found).
+   * **Fix**: Safely catch `COMException` when querying default render and capture endpoints, set `_defaultRenderDevice = null` / `_defaultCaptureDevice = null`, and zero peak meters without crashing timers.
+7. **BUG-QA-07: Access Denied on Elevated / Anti-Cheat Processes (`WasapiSessionMixer.cs`)** — `[FIXED]`
+   * **Finding**: Inspecting `proc.MainModule` or `proc.HasExited` on an elevated Administrator game or Anti-Cheat protected process throws `Win32Exception` (Access Denied) on non-admin instances. Previously, `if (proc.HasExited)` inside `try/catch` caught `Win32Exception` and executed `continue`, **hiding elevated games from the mixer**!
+   * **Fix**: Separated `Process.GetProcessById(pid)` from the `proc.HasExited` check: if `proc.HasExited` throws `Win32Exception` (Access Denied), treat the process as alive (`hasExited = false`) and fall back to `proc.ProcessName` so elevated games always appear in the mixer!
+
+### Category 3: Hardware & USB Bus Chaos (`ArctisNova7Device.cs`)
+8. **BUG-QA-08: Periodic `0x20`/`0xA0` Hardware Register Sync (`ArctisNova7Device.cs`)** — `[FIXED]`
+   * **Finding**: `ReadHardwareSettingsFromDevice()` (`0x20` and `0xA0`) was only called once on initial connect, rather than once on connect and every `5000ms` thereafter as required by the spec.
+   * **Fix**: Added a timestamp tracker (`_lastSettingsPollTime`) in `PollingLoop` so `0x20`/`0xA0` are polled on connect and every `5000ms` while online.
+9. **BUG-QA-09: Uninitialized Telemetry & Dongle Yank Handling (`ArctisNova7Device.cs`, `MainViewModel.cs`)** — `[FIXED]`
+   * **Finding**: When the USB dongle is yanked mid-write/read, `HidStream` throws `IOException` or `ObjectDisposedException`, which must immediately transition `Status.IsDeviceConnected = false` and `Status.IsHeadsetOnline = false`, dispose streams, and notify `PowerStateChanged(false)`.
+   * **Fix**: Updated `PollingLoop`, `SendAndReceiveCommand`, and `SendWriteRegister` to catch `IOException`/`ObjectDisposedException`, close streams, and transition `Status.IsHeadsetOnline = false`.
+
+### Category 4: Lifecycle & Shutdown Chaos (`MainWindow.xaml.cs`, `App.xaml.cs`)
+10. **BUG-QA-10: Windows Logoff Blocking (`MainWindow.xaml.cs`, `App.xaml.cs`)** — `[FIXED]`
+    * **Finding**: `MainWindow.OnClosing` unconditionally set `e.Cancel = true` when `!_isExplicitExit && _configService.Config.StartMinimizedToTray`, blocking Windows Logoff/Restart if the window was open.
+    * **Fix**: Subscribed to `OnSessionEnding` in `App.xaml.cs` (`IsSessionEnding = true`) and checked `!isSessionEnding` in `MainWindow.OnClosing`.

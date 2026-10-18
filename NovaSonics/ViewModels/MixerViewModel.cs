@@ -14,8 +14,10 @@ namespace NovaSonics.ViewModels
         private readonly IAudioMixerService _mixerService;
         private readonly IDeviceSwitchService _deviceService;
         private readonly IConfigService _configService;
+        private readonly IAudioRoutingService _routingService;
 
         public ObservableCollection<AudioDeviceModel> PlaybackDevices => _deviceService.PlaybackDevices;
+        public ObservableCollection<AudioDeviceModel> ActivePlaybackDevices => _deviceService.ActivePlaybackDevices;
         public ObservableCollection<AudioDeviceModel> CaptureDevices => _deviceService.CaptureDevices;
 
         [ObservableProperty]
@@ -95,11 +97,12 @@ namespace NovaSonics.ViewModels
         private bool _isExternalUpdate;
         private bool _isInternalDeviceSwitch;
 
-        public MixerViewModel(IAudioMixerService mixerService, IDeviceSwitchService deviceService, IConfigService configService)
+        public MixerViewModel(IAudioMixerService mixerService, IDeviceSwitchService deviceService, IConfigService configService, IAudioRoutingService routingService)
         {
             _mixerService = mixerService;
             _deviceService = deviceService;
             _configService = configService;
+            _routingService = routingService;
 
             _saveDebounceTimer = new DispatcherTimer
             {
@@ -131,40 +134,69 @@ namespace NovaSonics.ViewModels
 
             PlaybackDevices.CollectionChanged += (s, e) =>
             {
-                App.Current?.Dispatcher?.Invoke(RebindSelectedDevices);
+                App.Current?.Dispatcher?.BeginInvoke(RebindSelectedDevices);
+            };
+            ActivePlaybackDevices.CollectionChanged += (s, e) =>
+            {
+                App.Current?.Dispatcher?.BeginInvoke(RebindSelectedDevices);
             };
             CaptureDevices.CollectionChanged += (s, e) =>
             {
-                App.Current?.Dispatcher?.Invoke(RebindSelectedDevices);
+                App.Current?.Dispatcher?.BeginInvoke(RebindSelectedDevices);
+            };
+            _deviceService.DevicesRefreshed += (s, e) =>
+            {
+                App.Current?.Dispatcher?.BeginInvoke(RebindSelectedDevices);
             };
 
             _deviceService.DefaultDeviceChanged += (s, dev) =>
             {
-                App.Current?.Dispatcher?.Invoke(() =>
+                var disp = App.Current?.Dispatcher;
+                if (disp == null) return;
+                Action act = () =>
                 {
                     _isInternalDeviceSwitch = true;
                     try
                     {
-                        ActiveEndpointName = dev.Name;
-                        SelectedMasterDevice = dev;
+                        var activeDev = ActivePlaybackDevices.FirstOrDefault(d => d.Id == dev.Id) ?? dev;
+                        ActiveEndpointName = activeDev.Name;
+#pragma warning disable MVVMTK0034
+                        _selectedMasterDevice = activeDev;
+                        OnPropertyChanged(nameof(SelectedMasterDevice));
                         if (_configService.Config.UseSameDeviceOnAllChannels)
                         {
-                            SelectedGameDevice = dev;
-                            SelectedMediaDevice = dev;
-                            SelectedChatDevice = dev;
-                            _configService.Config.GameDeviceId = dev.Id;
-                            _configService.Config.MediaDeviceId = dev.Id;
-                            _configService.Config.ChatDeviceId = dev.Id;
+                            _selectedGameDevice = activeDev;
+                            _selectedMediaDevice = activeDev;
+                            _selectedChatDevice = activeDev;
+                            OnPropertyChanged(nameof(SelectedGameDevice));
+                            OnPropertyChanged(nameof(SelectedMediaDevice));
+                            OnPropertyChanged(nameof(SelectedChatDevice));
+                            _configService.Config.GameDeviceId = activeDev.Id;
+                            _configService.Config.MediaDeviceId = activeDev.Id;
+                            _configService.Config.ChatDeviceId = activeDev.Id;
                             OnPropertyChanged(nameof(SelectedGameDeviceId));
                             OnPropertyChanged(nameof(SelectedMediaDeviceId));
                             OnPropertyChanged(nameof(SelectedChatDeviceId));
+                            _configService.Save();
+
+                            var allApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            foreach (var s in AllSessions) allApps.Add(s.ProcessName);
+                            foreach (var k in _configService.Config.AppChannelAssignments.Keys) allApps.Add(k);
+                            _routingService.RouteAppsToDevice(allApps, "DefaultRenderDevice");
                         }
+                        else
+                        {
+                            EnforceAllChannelRoutes();
+                        }
+#pragma warning restore MVVMTK0034
                     }
                     finally
                     {
                         _isInternalDeviceSwitch = false;
                     }
-                });
+                };
+                if (disp.CheckAccess()) act();
+                else disp.BeginInvoke(act);
             };
 
             _mixerService.MasterVolumeExternalChanged += OnMasterVolumeExternalChanged;
@@ -178,7 +210,7 @@ namespace NovaSonics.ViewModels
             set
             {
                 if (value == null) return;
-                var match = PlaybackDevices.FirstOrDefault(d => d.Id == value);
+                var match = ActivePlaybackDevices.FirstOrDefault(d => d.Id == value);
                 if (match != null)
                 {
                     SelectedGameDevice = match;
@@ -198,7 +230,7 @@ namespace NovaSonics.ViewModels
             set
             {
                 if (value == null) return;
-                var match = PlaybackDevices.FirstOrDefault(d => d.Id == value);
+                var match = ActivePlaybackDevices.FirstOrDefault(d => d.Id == value);
                 if (match != null)
                 {
                     SelectedMediaDevice = match;
@@ -218,7 +250,7 @@ namespace NovaSonics.ViewModels
             set
             {
                 if (value == null) return;
-                var match = PlaybackDevices.FirstOrDefault(d => d.Id == value);
+                var match = ActivePlaybackDevices.FirstOrDefault(d => d.Id == value);
                 if (match != null)
                 {
                     SelectedChatDevice = match;
@@ -226,7 +258,6 @@ namespace NovaSonics.ViewModels
                 else
                 {
                     _configService.Config.ChatDeviceId = value;
-                    _deviceService.SetRoleEndpoint(value, Services.Interop.ERole.eCommunications);
                     QueueSave();
                 }
                 OnPropertyChanged(nameof(SelectedChatDeviceId));
@@ -257,17 +288,63 @@ namespace NovaSonics.ViewModels
         public void RebindSelectedDevices()
         {
             var cfg = _configService.Config;
-            var defOut = _deviceService.CurrentDefaultDevice ?? PlaybackDevices.FirstOrDefault(d => d.IsDefault) ?? PlaybackDevices.FirstOrDefault();
-            var defIn = _deviceService.CurrentDefaultCaptureDevice ?? CaptureDevices.FirstOrDefault(d => d.IsDefault) ?? CaptureDevices.FirstOrDefault();
+            var defOut = ActivePlaybackDevices.FirstOrDefault(d => d.IsDefault) 
+                         ?? ActivePlaybackDevices.FirstOrDefault(d => d.Id == _deviceService.CurrentDefaultDevice?.Id) 
+                         ?? ActivePlaybackDevices.FirstOrDefault()
+                         ?? _deviceService.CurrentDefaultDevice
+                         ?? PlaybackDevices.FirstOrDefault(d => d.IsOnline)
+                         ?? PlaybackDevices.FirstOrDefault();
+
+            var defIn = CaptureDevices.FirstOrDefault(d => d.IsDefault) 
+                        ?? CaptureDevices.FirstOrDefault(d => d.Id == _deviceService.CurrentDefaultCaptureDevice?.Id) 
+                        ?? CaptureDevices.FirstOrDefault();
 
             _isInternalDeviceSwitch = true;
             try
             {
-                SelectedMasterDevice = (!string.IsNullOrEmpty(cfg.MasterDeviceId) ? PlaybackDevices.FirstOrDefault(d => d.Id == cfg.MasterDeviceId) : null) ?? defOut;
-                SelectedGameDevice = (!string.IsNullOrEmpty(cfg.GameDeviceId) ? PlaybackDevices.FirstOrDefault(d => d.Id == cfg.GameDeviceId) : null) ?? defOut;
-                SelectedMediaDevice = (!string.IsNullOrEmpty(cfg.MediaDeviceId) ? PlaybackDevices.FirstOrDefault(d => d.Id == cfg.MediaDeviceId) : null) ?? defOut;
-                SelectedChatDevice = (!string.IsNullOrEmpty(cfg.ChatDeviceId) ? PlaybackDevices.FirstOrDefault(d => d.Id == cfg.ChatDeviceId) : null) ?? defOut;
-                SelectedMicDevice = (!string.IsNullOrEmpty(cfg.MicDeviceId) ? CaptureDevices.FirstOrDefault(d => d.Id == cfg.MicDeviceId) : null) ?? defIn;
+                var targetMaster = (!string.IsNullOrEmpty(cfg.MasterDeviceId) 
+                    ? ActivePlaybackDevices.FirstOrDefault(d => d.Id == cfg.MasterDeviceId) 
+                    : null) ?? defOut;
+
+                var targetGame = (!string.IsNullOrEmpty(cfg.GameDeviceId) 
+                    ? ActivePlaybackDevices.FirstOrDefault(d => d.Id == cfg.GameDeviceId) 
+                    : null) ?? targetMaster ?? defOut;
+
+                var targetMedia = (!string.IsNullOrEmpty(cfg.MediaDeviceId) 
+                    ? ActivePlaybackDevices.FirstOrDefault(d => d.Id == cfg.MediaDeviceId) 
+                    : null) ?? targetMaster ?? defOut;
+
+                var targetChat = (!string.IsNullOrEmpty(cfg.ChatDeviceId) 
+                    ? ActivePlaybackDevices.FirstOrDefault(d => d.Id == cfg.ChatDeviceId) 
+                    : null) ?? targetMaster ?? defOut;
+
+                if (cfg.UseSameDeviceOnAllChannels)
+                {
+                    targetGame = targetMaster ?? defOut;
+                    targetMedia = targetMaster ?? defOut;
+                    targetChat = targetMaster ?? defOut;
+                }
+
+                var targetMic = (!string.IsNullOrEmpty(cfg.MicDeviceId) 
+                    ? CaptureDevices.FirstOrDefault(d => d.Id == cfg.MicDeviceId) 
+                    : null) ?? defIn;
+
+#pragma warning disable MVVMTK0034
+                _selectedMasterDevice = targetMaster;
+                OnPropertyChanged(nameof(SelectedMasterDevice));
+
+                _selectedGameDevice = targetGame;
+                OnPropertyChanged(nameof(SelectedGameDevice));
+
+                _selectedMediaDevice = targetMedia;
+                OnPropertyChanged(nameof(SelectedMediaDevice));
+
+                _selectedChatDevice = targetChat;
+                OnPropertyChanged(nameof(SelectedChatDevice));
+
+                _selectedMicDevice = targetMic;
+                OnPropertyChanged(nameof(SelectedMicDevice));
+#pragma warning restore MVVMTK0034
 
                 if (SelectedMasterDevice != null)
                 {
@@ -294,6 +371,86 @@ namespace NovaSonics.ViewModels
             }
         }
 
+        private HashSet<string> GetMediaProcessNames()
+        {
+            var apps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var s in MediaSessions)
+            {
+                if (!string.IsNullOrEmpty(s.ProcessName)) apps.Add(s.ProcessName);
+            }
+            foreach (var s in AllSessions.Where(a => a.Channel == AppChannel.Media))
+            {
+                if (!string.IsNullOrEmpty(s.ProcessName)) apps.Add(s.ProcessName);
+            }
+            foreach (var kv in _configService.Config.AppChannelAssignments)
+            {
+                if (string.Equals(kv.Value, "media", StringComparison.OrdinalIgnoreCase)) apps.Add(kv.Key);
+            }
+            return apps;
+        }
+
+        private HashSet<string> GetGameProcessNames()
+        {
+            var apps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var s in GameSessions)
+            {
+                if (!string.IsNullOrEmpty(s.ProcessName)) apps.Add(s.ProcessName);
+            }
+            foreach (var s in AllSessions.Where(a => a.Channel == AppChannel.Game))
+            {
+                if (!string.IsNullOrEmpty(s.ProcessName)) apps.Add(s.ProcessName);
+            }
+            foreach (var kv in _configService.Config.AppChannelAssignments)
+            {
+                if (string.Equals(kv.Value, "game", StringComparison.OrdinalIgnoreCase)) apps.Add(kv.Key);
+            }
+            return apps;
+        }
+
+        private HashSet<string> GetChatProcessNames()
+        {
+            var apps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var s in ChatSessions)
+            {
+                if (!string.IsNullOrEmpty(s.ProcessName)) apps.Add(s.ProcessName);
+            }
+            foreach (var s in AllSessions.Where(a => a.Channel == AppChannel.Chat))
+            {
+                if (!string.IsNullOrEmpty(s.ProcessName)) apps.Add(s.ProcessName);
+            }
+            foreach (var kv in _configService.Config.AppChannelAssignments)
+            {
+                if (string.Equals(kv.Value, "chat", StringComparison.OrdinalIgnoreCase)) apps.Add(kv.Key);
+            }
+            return apps;
+        }
+
+        public void EnforceAllChannelRoutes()
+        {
+            if (_configService.Config.UseSameDeviceOnAllChannels) return;
+
+            string? gameDevId = SelectedGameDevice?.Id ?? _configService.Config.GameDeviceId;
+            string? mediaDevId = SelectedMediaDevice?.Id ?? _configService.Config.MediaDeviceId;
+            string? chatDevId = SelectedChatDevice?.Id ?? _configService.Config.ChatDeviceId;
+
+            var gameApps = GetGameProcessNames();
+            var mediaApps = GetMediaProcessNames();
+            var chatApps = GetChatProcessNames();
+
+            if (!string.IsNullOrEmpty(gameDevId))
+            {
+                _routingService.RouteAppsToDevice(gameApps, gameDevId);
+            }
+            if (!string.IsNullOrEmpty(mediaDevId))
+            {
+                _routingService.RouteAppsToDevice(mediaApps, mediaDevId);
+            }
+            if (!string.IsNullOrEmpty(chatDevId))
+            {
+                _routingService.RouteAppsToDevice(chatApps, chatDevId);
+            }
+        }
+
         partial void OnSelectedMasterDeviceChanged(AudioDeviceModel? value)
         {
             if (_isInternalDeviceSwitch || value == null) return;
@@ -301,12 +458,10 @@ namespace NovaSonics.ViewModels
             ActiveEndpointName = value.Name;
             QueueSave();
 
-            if (_deviceService.CurrentDefaultDevice?.Id != value.Id)
-            {
-                _deviceService.SwitchToDevice(value.Id);
-            }
+            string devId = value.Id;
+            bool syncAll = _configService.Config.UseSameDeviceOnAllChannels;
 
-            if (_configService.Config.UseSameDeviceOnAllChannels)
+            if (syncAll)
             {
                 _isInternalDeviceSwitch = true;
                 try
@@ -326,6 +481,33 @@ namespace NovaSonics.ViewModels
                     _isInternalDeviceSwitch = false;
                 }
             }
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    if (!syncAll)
+                    {
+                        EnforceAllChannelRoutes();
+                    }
+
+                    if (_deviceService.CurrentDefaultDevice?.Id != devId)
+                    {
+                        _deviceService.SwitchToDevice(devId);
+                    }
+
+                    if (syncAll)
+                    {
+                        var allApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var s in AllSessions) allApps.Add(s.ProcessName);
+                        foreach (var k in _configService.Config.AppChannelAssignments.Keys) allApps.Add(k);
+                        _routingService.RouteAppsToDevice(allApps, "DefaultRenderDevice");
+                    }
+
+                    _mixerService.RebindEndpoint();
+                }
+                catch { }
+            });
         }
 
         partial void OnSelectedGameDeviceChanged(AudioDeviceModel? value)
@@ -333,7 +515,25 @@ namespace NovaSonics.ViewModels
             OnPropertyChanged(nameof(SelectedGameDeviceId));
             if (_isInternalDeviceSwitch || value == null) return;
             _configService.Config.GameDeviceId = value.Id;
+
+            if (SelectedMasterDevice != null && !string.Equals(value.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                _configService.Config.UseSameDeviceOnAllChannels = false;
+            }
+
             QueueSave();
+
+            // Never change the system-wide default endpoint from the GAME dropdown!
+            // Explicitly pin all channels (Game, Media, Chat) to their assigned device IDs so no app on another channel is hijacked.
+            EnforceAllChannelRoutes();
+            Task.Run(() =>
+            {
+                try
+                {
+                    _mixerService.RebindEndpoint();
+                }
+                catch { }
+            });
         }
 
         partial void OnSelectedMediaDeviceChanged(AudioDeviceModel? value)
@@ -341,7 +541,25 @@ namespace NovaSonics.ViewModels
             OnPropertyChanged(nameof(SelectedMediaDeviceId));
             if (_isInternalDeviceSwitch || value == null) return;
             _configService.Config.MediaDeviceId = value.Id;
+
+            if (SelectedMasterDevice != null && !string.Equals(value.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                _configService.Config.UseSameDeviceOnAllChannels = false;
+            }
+
             QueueSave();
+
+            // Never change the system-wide default endpoint from the MEDIA dropdown!
+            // Explicitly pin all channels (Game, Media, Chat) to their assigned device IDs.
+            EnforceAllChannelRoutes();
+            Task.Run(() =>
+            {
+                try
+                {
+                    _mixerService.RebindEndpoint();
+                }
+                catch { }
+            });
         }
 
         partial void OnSelectedChatDeviceChanged(AudioDeviceModel? value)
@@ -349,8 +567,25 @@ namespace NovaSonics.ViewModels
             OnPropertyChanged(nameof(SelectedChatDeviceId));
             if (_isInternalDeviceSwitch || value == null) return;
             _configService.Config.ChatDeviceId = value.Id;
-            _deviceService.SetRoleEndpoint(value.Id, Services.Interop.ERole.eCommunications);
+
+            if (SelectedMasterDevice != null && !string.Equals(value.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                _configService.Config.UseSameDeviceOnAllChannels = false;
+            }
+
             QueueSave();
+
+            // Never change the system-wide default endpoint from the CHAT dropdown!
+            // Explicitly pin all channels (Game, Media, Chat) to their assigned device IDs.
+            EnforceAllChannelRoutes();
+            Task.Run(() =>
+            {
+                try
+                {
+                    _mixerService.RebindEndpoint();
+                }
+                catch { }
+            });
         }
 
         partial void OnSelectedMicDeviceChanged(AudioDeviceModel? value)
@@ -358,8 +593,17 @@ namespace NovaSonics.ViewModels
             OnPropertyChanged(nameof(SelectedMicDeviceId));
             if (_isInternalDeviceSwitch || value == null) return;
             _configService.Config.MicDeviceId = value.Id;
-            _deviceService.SwitchCaptureDevice(value.Id);
+            string micId = value.Id;
             QueueSave();
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    _deviceService.SwitchCaptureDevice(micId);
+                }
+                catch { }
+            });
         }
 
         private void SyncMixerService()
@@ -388,11 +632,24 @@ namespace NovaSonics.ViewModels
             MicPeak = _mixerService.MicPeak;
         }
 
+        public void ResetPeaks()
+        {
+            MasterPeak = 0f;
+            GamePeak = 0f;
+            MediaPeak = 0f;
+            ChatPeak = 0f;
+            MicPeak = 0f;
+            foreach (var s in AllSessions)
+            {
+                s.PeakValue = 0f;
+            }
+        }
+
         private void QueueSave()
         {
             if (App.Current?.Dispatcher?.CheckAccess() == false)
             {
-                App.Current.Dispatcher.Invoke(QueueSave);
+                App.Current.Dispatcher.BeginInvoke(QueueSave);
                 return;
             }
             _saveDebounceTimer.Stop();
@@ -491,8 +748,27 @@ namespace NovaSonics.ViewModels
             QueueSave();
         }
 
+        public void SetChatMixFromHardware(float balance)
+        {
+            float clamped = Math.Clamp(balance, -1f, 1f);
+            if (Math.Abs(ChatMixBalance - clamped) < 0.001f) return;
+            _isExternalUpdate = true;
+            try
+            {
+                ChatMixBalance = clamped;
+                _mixerService.ChatMixBalance = clamped;
+                _configService.Config.ChatMixBalance = clamped;
+                QueueSave();
+            }
+            finally
+            {
+                _isExternalUpdate = false;
+            }
+        }
+
         partial void OnChatMixBalanceChanged(float value)
         {
+            if (_isExternalUpdate) return;
             _mixerService.ChatMixBalance = value;
             _configService.Config.ChatMixBalance = value;
             QueueSave();
@@ -515,14 +791,17 @@ namespace NovaSonics.ViewModels
 
         public void MoveAppToChannel(AppSessionModel app, AppChannel targetChannel)
         {
-            if (app == null) return;
+            if (app == null || string.IsNullOrEmpty(app.ProcessName) || !AllSessions.Contains(app) || app.Channel == targetChannel) return;
             _mixerService.SetAppChannel(app, targetChannel);
             RefreshCategorizedLists();
         }
 
         public void RefreshCategorizedLists()
         {
-            App.Current.Dispatcher.Invoke(() =>
+            var disp = App.Current?.Dispatcher;
+            if (disp == null) return;
+
+            Action act = () =>
             {
                 MasterSessions.Clear();
                 GameSessions.Clear();
@@ -547,7 +826,16 @@ namespace NovaSonics.ViewModels
                             break;
                     }
                 }
-            });
+            };
+
+            if (disp.CheckAccess())
+            {
+                act();
+            }
+            else
+            {
+                disp.BeginInvoke(act);
+            }
         }
     }
 }

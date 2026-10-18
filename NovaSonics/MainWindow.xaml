@@ -87,6 +87,7 @@
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" IsHitTestVisible="False">
                     <Image Source="Resources/app.ico" Width="16" Height="16" Margin="12,0,8,0" VerticalAlignment="Center"/>
                     <TextBlock Text="NovaSonics" FontWeight="SemiBold" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding AppVersion, StringFormat=' ({0})'}" FontWeight="Normal" FontSize="11" Foreground="#64748B" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- Center: Draggable Spacer handled automatically by WindowChrome CaptionHeight -->
@@ -117,7 +118,10 @@
 
                 <!-- App Brand + Tabs -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="NOVASONICS" FontWeight="Black" FontSize="17" Foreground="#00E5FF" VerticalAlignment="Center" Margin="0,0,24,0"/>
+                    <TextBlock Text="NOVASONICS" FontWeight="Black" FontSize="17" Foreground="#00E5FF" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Border Background="#1E293B" CornerRadius="4" Padding="5,2" VerticalAlignment="Center" Margin="0,0,20,0">
+                        <TextBlock Text="{Binding AppVersion}" FontSize="10" FontWeight="Bold" Foreground="#38BDF8"/>
+                    </Border>
 
                     <!-- Tab Buttons -->
                     <StackPanel Orientation="Horizontal">
@@ -203,7 +207,7 @@
                 <Border Grid.Column="2" Background="#14161C" CornerRadius="8" Padding="12,6" VerticalAlignment="Center" BorderBrush="#252A36" BorderThickness="1">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <!-- Headset Icon + Status -->
-                        <TextBlock Text="🎧 Nova 7:" FontWeight="Bold" FontSize="12" Foreground="#CBD5E1" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBlock Text="{Binding HeadsetStatus.DeviceModelName, StringFormat='{}🎧 {0}:'}" FontWeight="Bold" FontSize="12" Foreground="#CBD5E1" VerticalAlignment="Center" Margin="0,0,6,0"/>
 
                         <!-- Online / Offline State -->
                         <TextBlock Text="{Binding HeadsetStatus.IsHeadsetOnline, Converter={StaticResource BooleanToOnlineTextConverter}}"

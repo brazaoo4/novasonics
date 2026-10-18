@@ -8,6 +8,9 @@ namespace NovaSonics.Models
         private bool _isDeviceConnected;
 
         [ObservableProperty]
+        private string _deviceModelName = "Arctis Nova 7";
+
+        [ObservableProperty]
         private bool _isHeadsetOnline;
 
         [ObservableProperty]

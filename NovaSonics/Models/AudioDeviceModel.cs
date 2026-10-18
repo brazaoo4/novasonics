@@ -26,13 +26,18 @@ namespace NovaSonics.Models
         private int _priorityOrder;
 
         [ObservableProperty]
+        private bool _isOnline = true;
+
+        [ObservableProperty]
         private bool _isNextDevice;
 
         [ObservableProperty]
         private bool _isPreviousDevice;
 
-        public bool IsNovaHeadset => (Name.Contains("Nova 7", System.StringComparison.OrdinalIgnoreCase) ||
-                                      Description.Contains("Nova 7", System.StringComparison.OrdinalIgnoreCase)) &&
+        public bool IsNovaHeadset => (Name.Contains("Nova", System.StringComparison.OrdinalIgnoreCase) ||
+                                      Name.Contains("Arctis", System.StringComparison.OrdinalIgnoreCase) ||
+                                      Description.Contains("Nova", System.StringComparison.OrdinalIgnoreCase) ||
+                                      Description.Contains("Arctis", System.StringComparison.OrdinalIgnoreCase)) &&
                                      !Name.Contains("SteelSeries Sonar", System.StringComparison.OrdinalIgnoreCase);
 
         public override bool Equals(object? obj) => obj is AudioDeviceModel other && Equals(other);

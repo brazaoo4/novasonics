@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NovaSonics.Models;
 using NovaSonics.Services;
+using NovaSonics.Services.Interop;
 
 namespace NovaSonics.ViewModels
 {
@@ -43,37 +45,107 @@ namespace NovaSonics.ViewModels
             _autoSwitchOnPowerOff = cfg.AutoSwitchOnPowerOff;
             _useSameDeviceOnAllChannels = cfg.UseSameDeviceOnAllChannels;
 
-            _deviceService.DefaultDeviceChanged += (s, dev) => CurrentDevice = dev;
+            _deviceService.DefaultDeviceChanged += (s, dev) =>
+            {
+                CurrentDevice = dev;
+                SyncListsFromService();
+            };
+            _deviceService.DevicesRefreshed += (s, e) => SyncListsFromService();
 
-            RefreshLists();
+            SyncListsFromService();
         }
 
         [RelayCommand]
         public void CleanVolumeMixer()
         {
-            int purged = _deviceService.PurgeStalePropertyStoreKeys(_deviceService.CurrentDefaultDevice?.Id);
-            _notificationService?.ShowCustomToast("Volume Mixer Cleaned", $"Purged {purged} duplicate / ghost audio entries from Windows.");
-            RefreshLists();
+            string? defId = _deviceService.CurrentDefaultDevice?.Id;
+            Task.Run(() =>
+            {
+                AudioPolicyConfigInterop.ClearAllPersistedEndpoints();
+                int purged = _deviceService.PurgeStalePropertyStoreKeys(defId);
+                _notificationService?.ShowCustomToast("Volume Mixer Cleaned", $"Purged {purged} duplicate / ghost audio entries from Windows and reset per-app routing.");
+                _deviceService.RefreshDevices();
+            });
         }
 
         public void RefreshLists()
         {
-            _deviceService.RefreshDevices();
-            CurrentDevice = _deviceService.CurrentDefaultDevice;
+            SyncListsFromService();
+            Task.Run(() => _deviceService.RefreshDevices());
+        }
 
-            PriorityDevices.Clear();
-            ExcludedDevices.Clear();
-
-            var sorted = _deviceService.PlaybackDevices.OrderBy(d => d.PriorityOrder).ToList();
-            foreach (var d in sorted)
+        public void SyncListsFromService()
+        {
+            void Update()
             {
-                if (d.IsExcluded)
+                CurrentDevice = _deviceService.CurrentDefaultDevice;
+
+                var sorted = _deviceService.PlaybackDevices.OrderBy(d => d.PriorityOrder).ToList();
+                var newPriority = sorted.Where(d => !d.IsExcluded).ToList();
+                var newExcluded = sorted.Where(d => d.IsExcluded).ToList();
+
+                SyncCollection(PriorityDevices, newPriority);
+                SyncCollection(ExcludedDevices, newExcluded);
+            }
+
+            if (System.Windows.Application.Current?.Dispatcher?.CheckAccess() == false)
+            {
+                System.Windows.Application.Current.Dispatcher.BeginInvoke(Update);
+            }
+            else
+            {
+                Update();
+            }
+        }
+
+        private static void SyncCollection(ObservableCollection<AudioDeviceModel> target, List<AudioDeviceModel> source)
+        {
+            for (int i = target.Count - 1; i >= 0; i--)
+            {
+                var item = target[i];
+                if (!source.Any(s => (!string.IsNullOrEmpty(s.Id) && !string.IsNullOrEmpty(item.Id) && string.Equals(s.Id, item.Id, StringComparison.OrdinalIgnoreCase)) ||
+                                     string.Equals(s.Name, item.Name, StringComparison.OrdinalIgnoreCase)))
                 {
-                    ExcludedDevices.Add(d);
+                    target.RemoveAt(i);
+                }
+            }
+
+            for (int i = 0; i < source.Count; i++)
+            {
+                var s = source[i];
+                var existing = target.FirstOrDefault(t => 
+                    (!string.IsNullOrEmpty(t.Id) && !string.IsNullOrEmpty(s.Id) && string.Equals(t.Id, s.Id, StringComparison.OrdinalIgnoreCase)) ||
+                    string.Equals(t.Name, s.Name, StringComparison.OrdinalIgnoreCase));
+
+                if (existing != null)
+                {
+                    existing.Id = s.Id;
+                    existing.Name = s.Name;
+                    existing.Description = s.Description;
+                    existing.IsDefault = s.IsDefault;
+                    existing.IsActive = s.IsActive;
+                    existing.IsOnline = s.IsOnline;
+                    existing.IsExcluded = s.IsExcluded;
+                    existing.PriorityOrder = s.PriorityOrder;
+                    existing.IsNextDevice = s.IsNextDevice;
+                    existing.IsPreviousDevice = s.IsPreviousDevice;
+
+                    int currentIdx = target.IndexOf(existing);
+                    if (currentIdx != i && i < target.Count)
+                    {
+                        target.Move(currentIdx, i);
+                    }
                 }
                 else
                 {
-                    PriorityDevices.Add(d);
+                    if (i < target.Count)
+                    {
+                        target.Insert(i, s);
+                    }
+                    else
+                    {
+                        target.Add(s);
+                    }
                 }
             }
         }
@@ -113,7 +185,6 @@ namespace NovaSonics.ViewModels
             {
                 PriorityDevices.Move(oldIndex, newIndex);
                 SavePriorityList();
-                RefreshLists();
             }
         }
 
@@ -130,7 +201,6 @@ namespace NovaSonics.ViewModels
                 _configService.Config.ExcludedDevices.Add(device.Name);
             }
             SavePriorityList();
-            RefreshLists();
         }
 
         [RelayCommand]
@@ -143,35 +213,70 @@ namespace NovaSonics.ViewModels
 
             _configService.Config.ExcludedDevices.Remove(device.Name);
             SavePriorityList();
-            RefreshLists();
         }
 
         [RelayCommand]
         public void SetDefault(AudioDeviceModel device)
         {
-            if (device == null) return;
+            if (device == null || !device.IsOnline || string.IsNullOrWhiteSpace(device.Id)) return;
+
+            int oldIdx = PriorityDevices.IndexOf(device);
+            if (oldIdx > 0)
+            {
+                PriorityDevices.Move(oldIdx, 0);
+            }
+            else if (oldIdx < 0)
+            {
+                PriorityDevices.Insert(0, device);
+            }
+
+            for (int i = 0; i < PriorityDevices.Count; i++)
+            {
+                PriorityDevices[i].PriorityOrder = i;
+            }
+            _configService.Config.PriorityDevices = PriorityDevices.Select(d => d.Name).ToList();
+            _configService.Save();
+
+            foreach (var d in _deviceService.PlaybackDevices)
+            {
+                for (int i = 0; i < PriorityDevices.Count; i++)
+                {
+                    if (string.Equals(d.Id, PriorityDevices[i].Id, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(d.Name, PriorityDevices[i].Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        d.PriorityOrder = i;
+                        break;
+                    }
+                }
+            }
+
             _deviceService.SwitchToDevice(device.Id);
-            RefreshLists();
+            SyncListsFromService();
         }
 
         [RelayCommand]
         public void SwitchNextDevice()
         {
             _deviceService.SwitchNextDevice();
-            RefreshLists();
         }
 
         [RelayCommand]
         public void SwitchPreviousDevice()
         {
             _deviceService.SwitchPreviousDevice();
-            RefreshLists();
         }
 
         private void SavePriorityList()
         {
             _configService.Config.PriorityDevices = PriorityDevices.Select(d => d.Name).ToList();
             _configService.Save();
+
+            for (int i = 0; i < PriorityDevices.Count; i++)
+            {
+                PriorityDevices[i].PriorityOrder = i;
+            }
+
+            Task.Run(() => _deviceService.RefreshDevices());
         }
 
         partial void OnAutoSwitchEnabledChanged(bool value)
@@ -195,6 +300,18 @@ namespace NovaSonics.ViewModels
         partial void OnUseSameDeviceOnAllChannelsChanged(bool value)
         {
             _configService.Config.UseSameDeviceOnAllChannels = value;
+            if (value)
+            {
+                Task.Run(() => AudioPolicyConfigInterop.ClearAllPersistedEndpoints());
+                if (_deviceService.CurrentDefaultDevice != null)
+                {
+                    string defId = _deviceService.CurrentDefaultDevice.Id;
+                    _configService.Config.MasterDeviceId = defId;
+                    _configService.Config.GameDeviceId = defId;
+                    _configService.Config.MediaDeviceId = defId;
+                    _configService.Config.ChatDeviceId = defId;
+                }
+            }
             _configService.Save();
         }
     }

@@ -12,6 +12,118 @@
 
     <UserControl.Resources>
         <conv:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+        <conv:BooleanToOpacityConverter x:Key="BooleanToOpacityConverter" />
+        <conv:InverseBooleanConverter x:Key="InverseBooleanConverter" />
+        <conv:FloatToPercentageConverter x:Key="FloatToPercentageConverter" />
+
+        <!-- Sleek Icon Button Style -->
+        <Style x:Key="IconButton" TargetType="Button">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Background" Value="#1E293B" />
+            <Setter Property="BorderBrush" Value="#334155" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#334155" />
+                                <Setter TargetName="border" Property="BorderBrush" Value="#475569" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#0F172A" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Opacity" Value="0.3" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Danger/Exclude Icon Button Style -->
+        <Style x:Key="DangerIconButton" TargetType="Button">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Background" Value="#1E222B" />
+            <Setter Property="BorderBrush" Value="#3B262E" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#7F1D1D" />
+                                <Setter TargetName="border" Property="BorderBrush" Value="#EF4444" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#450A0A" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Sleek Dark Pill/Action Button Style with proper dark disabled state -->
+        <Style x:Key="DarkActionButton" TargetType="Button">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Background" Value="#1E293B" />
+            <Setter Property="BorderBrush" Value="#334155" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="#E2E8F0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#334155" />
+                                <Setter TargetName="border" Property="BorderBrush" Value="#475569" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#0F172A" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background" Value="#151D2A" />
+                                <Setter TargetName="border" Property="BorderBrush" Value="#1E293B" />
+                                <Setter Property="Foreground" Value="#475569" />
+                                <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Set Default Button Style: Collapsed when already Default or when Offline -->
+        <Style x:Key="SetDefaultButtonStyle" TargetType="Button" BasedOn="{StaticResource DarkActionButton}">
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Visibility" Value="Visible" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsDefault}" Value="True">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsOnline}" Value="False">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
 
     <Grid Margin="20">
@@ -21,27 +133,27 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Header + Backup Device Switch (Manual / Auto) Toggle -->
+        <!-- Header + Clean Volume Mixer Cache & Auto Switch Priority Toggle -->
         <Grid Grid.Row="0" Margin="0,0,0,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0">
-                <TextBlock Text="Device Manager (Backup Device Switch)" FontSize="20" FontWeight="Bold" Foreground="#F8FAFC"/>
-                <TextBlock Text="Drag or arrange playback devices in priority order. When your Arctis Nova 7 powers on or off, NovaSonics switches audio immediately." FontSize="12" Foreground="#94A3B8" Margin="0,4,0,0"/>
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="Device Manager" FontSize="20" FontWeight="Bold" Foreground="#F8FAFC"/>
+                <TextBlock Text="Prioritize playback devices for automatic fallback and quick switching." FontSize="12" Foreground="#94A3B8" Margin="0,4,0,0"/>
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                <Button Content="🧹 Clean Volume Mixer Cache" Command="{Binding CleanVolumeMixerCommand}"
-                        Padding="12,6" Background="#1E293B" BorderBrush="#334155" Foreground="#F8FAFC" FontSize="11" FontWeight="SemiBold"
+                <Button Content="🧹 Clean Volume Mixer" Command="{Binding CleanVolumeMixerCommand}"
+                        Style="{StaticResource DarkActionButton}" Padding="12,6" FontWeight="SemiBold"
                         Margin="0,0,12,0" ToolTip="Purges ghost / duplicate audio session sliders left in Windows Volume Mixer by other devices or uninstalled software."/>
 
                 <Border Background="#1C1F26" CornerRadius="8" Padding="14,8" BorderBrush="#262A34" BorderThickness="1" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="BACKUP DEVICE SWITCH:" FontWeight="Bold" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <CheckBox Content="Auto (Priority Fallback)" IsChecked="{Binding AutoSwitchEnabled, Mode=TwoWay}" FontWeight="SemiBold" Foreground="#00E5FF" VerticalAlignment="Center"/>
+                        <TextBlock Text="AUTO-SWITCH PRIORITY" FontWeight="Bold" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <CheckBox Content="Active" IsChecked="{Binding AutoSwitchEnabled, Mode=TwoWay}" FontWeight="SemiBold" Foreground="#00E5FF" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
             </StackPanel>
@@ -63,14 +175,15 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="OUTPUT DEVICE PRIORITY LIST" FontWeight="Bold" FontSize="13" Foreground="#00E5FF" Margin="0,0,0,12"/>
+                    <TextBlock Grid.Row="0" Text="OUTPUT DEVICE PRIORITY" FontWeight="Bold" FontSize="13" Foreground="#00E5FF" Margin="0,0,0,12"/>
 
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{Binding PriorityDevices}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Background="#16181F" CornerRadius="6" Padding="12,10" Margin="0,4" BorderBrush="#2D3340" BorderThickness="1"
-                                            AllowDrop="True" MouseMove="DeviceCard_MouseMove" Drop="PriorityCard_Drop" Cursor="Hand">
+                                            AllowDrop="True" MouseMove="DeviceCard_MouseMove" Drop="PriorityCard_Drop" Cursor="Hand"
+                                            Opacity="{Binding IsOnline, Converter={StaticResource BooleanToOpacityConverter}}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
@@ -83,41 +196,119 @@
 
                                             <!-- Device Name & Badges -->
                                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="#F1F5F9" FontSize="13"/>
-                                                    <!-- Current Device Badge -->
-                                                    <Border Background="#065F46" CornerRadius="4" Padding="6,1" Margin="8,0,0,0"
-                                                            Visibility="{Binding IsDefault, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                        <TextBlock Text="🟢 CURRENT DEVICE" FontSize="10" FontWeight="Bold" Foreground="#34D399"/>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="#F1F5F9" FontSize="13" VerticalAlignment="Center"/>
+
+                                                    <!-- Current Active Device Badge (only when Default AND Online) -->
+                                                    <Border Background="#065F46" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding IsDefault}" Value="True" />
+                                                                            <Condition Binding="{Binding IsOnline}" Value="True" />
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <TextBlock Text="ACTIVE" FontSize="9" FontWeight="Bold" Foreground="#34D399"/>
                                                     </Border>
-                                                    <!-- Next Device Badge -->
-                                                    <Border Background="#1E3A8A" CornerRadius="4" Padding="6,1" Margin="6,0,0,0"
-                                                            Visibility="{Binding IsNextDevice, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                        <TextBlock Text="⏭️ NEXT DEVICE" FontSize="10" FontWeight="Bold" Foreground="#60A5FA"/>
+
+                                                    <!-- Offline Badge (when Not Online and Not Default) -->
+                                                    <Border Background="#334155" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding IsOnline}" Value="False" />
+                                                                            <Condition Binding="{Binding IsDefault}" Value="False" />
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <TextBlock Text="OFFLINE" FontSize="9" FontWeight="Bold" Foreground="#94A3B8"/>
                                                     </Border>
-                                                    <!-- Previous Device Badge -->
-                                                    <Border Background="#312E81" CornerRadius="4" Padding="6,1" Margin="6,0,0,0"
-                                                            Visibility="{Binding IsPreviousDevice, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                        <TextBlock Text="⏮️ PREVIOUS DEVICE" FontSize="10" FontWeight="Bold" Foreground="#A5B4FC"/>
+
+                                                    <!-- Default but Offline Warning Badge (when Default and Not Online) -->
+                                                    <Border Background="#451A03" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding IsDefault}" Value="True" />
+                                                                            <Condition Binding="{Binding IsOnline}" Value="False" />
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <TextBlock Text="OFFLINE" FontSize="9" FontWeight="Bold" Foreground="#FDBA74" ToolTip="Device is Windows default but currently offline / disconnected."/>
+                                                    </Border>
+
+                                                    <!-- Next Device Badge (when online and not default) -->
+                                                    <Border Background="#1E3A8A" CornerRadius="4" Padding="6,2" Margin="6,0,0,0" VerticalAlignment="Center">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding IsNextDevice}" Value="True" />
+                                                                            <Condition Binding="{Binding IsOnline}" Value="True" />
+                                                                            <Condition Binding="{Binding IsDefault}" Value="False" />
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <TextBlock Text="NEXT" FontSize="9" FontWeight="Bold" Foreground="#60A5FA"/>
                                                     </Border>
                                                 </StackPanel>
-                                                <TextBlock Text="{Binding Description}" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
+
+                                                <TextBlock Text="{Binding Description}" FontSize="11" Foreground="#64748B" Margin="0,3,0,0"/>
                                             </StackPanel>
 
-                                            <!-- Control Buttons (Move Up, Move Down, Set Default, Exclude) -->
+                                            <!-- Control Buttons (Set Default, Move Up, Move Down, Exclude) -->
                                             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                                <Button Content="Set Default" FontSize="11" Padding="8,3" Margin="2,0" Background="#1E293B" BorderBrush="#334155"
+                                                <!-- Set Default Button -->
+                                                <Button Content="Set Default" Style="{StaticResource SetDefaultButtonStyle}"
                                                         Command="{Binding DataContext.SetDefaultCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                        CommandParameter="{Binding}" />
-                                                <Button Content="▲" FontSize="11" Width="28" Height="26" Margin="2,0" Background="#1E293B" BorderBrush="#334155"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding IsOnline}"
+                                                        ToolTip="Set as Windows active default playback device" />
+
+                                                <!-- Move Up Button -->
+                                                <Button Style="{StaticResource IconButton}" Margin="2,0" ToolTip="Move Up in Priority"
                                                         Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                        CommandParameter="{Binding}" />
-                                                <Button Content="▼" FontSize="11" Width="28" Height="26" Margin="2,0" Background="#1E293B" BorderBrush="#334155"
+                                                        CommandParameter="{Binding}">
+                                                    <Path Data="M 1 6 L 6 1 L 11 6" Stroke="#94A3B8" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Button>
+
+                                                <!-- Move Down Button -->
+                                                <Button Style="{StaticResource IconButton}" Margin="2,0" ToolTip="Move Down in Priority"
                                                         Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                        CommandParameter="{Binding}" />
-                                                <Button Content="✖" FontSize="11" Width="28" Height="26" Margin="2,0" Background="#7F1D1D" BorderBrush="#991B1B" ToolTip="Exclude device"
+                                                        CommandParameter="{Binding}">
+                                                    <Path Data="M 1 1 L 6 6 L 11 1" Stroke="#94A3B8" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Button>
+
+                                                <!-- Exclude Button -->
+                                                <Button Style="{StaticResource DangerIconButton}" Margin="2,0" ToolTip="Exclude device from priority switching"
                                                         Command="{Binding DataContext.ExcludeDeviceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                        CommandParameter="{Binding}" />
+                                                        CommandParameter="{Binding}">
+                                                    <Path Data="M 2 2 L 8 8 M 8 2 L 2 8" Stroke="#EF4444" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Button>
                                             </StackPanel>
                                         </Grid>
                                     </Border>
@@ -164,7 +355,7 @@
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Text="EXCLUDED DEVICES (Drop Here to Exclude)" FontWeight="Bold" FontSize="13" Foreground="#94A3B8" Margin="0,0,0,12"/>
+                        <TextBlock Grid.Row="0" Text="EXCLUDED DEVICES" FontWeight="Bold" FontSize="13" Foreground="#94A3B8" Margin="0,0,0,12"/>
 
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                             <ItemsControl ItemsSource="{Binding ExcludedDevices}">
@@ -183,9 +374,14 @@
                                                     <TextBlock Text="{Binding Description}" FontSize="10" Foreground="#475569" Margin="0,2,0,0"/>
                                                 </StackPanel>
 
-                                                <Button Grid.Column="1" Content="↺ Include" FontSize="11" Padding="8,3" Background="#1E293B" BorderBrush="#334155"
+                                                <Button Grid.Column="1" Style="{StaticResource DarkActionButton}"
                                                         Command="{Binding DataContext.RestoreDeviceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                        CommandParameter="{Binding}" />
+                                                        CommandParameter="{Binding}" ToolTip="Re-include device in priority switching">
+                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <Path Data="M 1 5 L 4 2 L 7 5 M 4 2 L 4 9" Stroke="#00E5FF" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="Restore" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Button>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -198,12 +394,23 @@
         </Grid>
 
         <!-- Bottom Policy Toggles -->
-        <Border Grid.Row="2" Background="#181B22" CornerRadius="8" Padding="16" Margin="0,16,0,0" BorderBrush="#262A34" BorderThickness="1">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                <CheckBox Content="Use the same device on all channels" IsChecked="{Binding UseSameDeviceOnAllChannels}" Foreground="#E2E8F0" Margin="16,0" FontSize="12"/>
-                <CheckBox Content="Automatic backup switch at boot/reboot" IsChecked="{Binding AutoSwitchAtBoot}" Foreground="#E2E8F0" Margin="16,0" FontSize="12"/>
-                <CheckBox Content="Auto-switch when Nova Wireless headset is powered off" IsChecked="{Binding AutoSwitchOnPowerOff}" Foreground="#E2E8F0" Margin="16,0" FontSize="12"/>
-            </StackPanel>
+        <Border Grid.Row="2" Background="#181B22" CornerRadius="8" Padding="16,12" Margin="0,16,0,0" BorderBrush="#262A34" BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <CheckBox Grid.Column="0" Content="Sync all channels with default device" IsChecked="{Binding UseSameDeviceOnAllChannels}" 
+                          Foreground="#E2E8F0" FontSize="12" ToolTip="Mirror the active default output device across Game, Media, and Chat. Uncheck to route channels to separate devices."/>
+
+                <CheckBox Grid.Column="1" Content="Auto-switch to priority device at startup" IsChecked="{Binding AutoSwitchAtBoot}" 
+                          Foreground="#E2E8F0" FontSize="12" ToolTip="Enforce highest-priority active output device whenever NovaSonics launches."/>
+
+                <CheckBox Grid.Column="2" Content="Auto-switch when wireless headset powers off" IsChecked="{Binding AutoSwitchOnPowerOff}" 
+                          Foreground="#E2E8F0" FontSize="12" ToolTip="Switch to next priority output (e.g. speakers) immediately when headset is turned off."/>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

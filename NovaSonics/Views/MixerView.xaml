@@ -91,7 +91,7 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,10" MinHeight="52" PreviewMouseWheel="Master_MouseWheel" VerticalAlignment="Center">
-                        <Grid Margin="0,6,0,6">
+                        <Grid Margin="0,4,0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -187,9 +187,8 @@
                             <TextBlock Grid.Column="0" Text="🎮 GAME" FontWeight="Bold" FontSize="13" Foreground="#00E5FF" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding GameVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
                         </Grid>
-                        <ComboBox ItemsSource="{Binding PlaybackDevices}"
-                                  SelectedValuePath="Id"
-                                  SelectedValue="{Binding SelectedGameDeviceId, Mode=TwoWay}"
+                        <ComboBox ItemsSource="{Binding ActivePlaybackDevices}"
+                                  SelectedItem="{Binding SelectedGameDevice, Mode=TwoWay}"
                                   Height="26" FontSize="10" ToolTip="Select Output Device for Game">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -282,9 +281,8 @@
                             <TextBlock Grid.Column="0" Text="🎵 MEDIA" FontWeight="Bold" FontSize="13" Foreground="#F59E0B" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding MediaVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
                         </Grid>
-                        <ComboBox ItemsSource="{Binding PlaybackDevices}"
-                                  SelectedValuePath="Id"
-                                  SelectedValue="{Binding SelectedMediaDeviceId, Mode=TwoWay}"
+                        <ComboBox ItemsSource="{Binding ActivePlaybackDevices}"
+                                  SelectedItem="{Binding SelectedMediaDevice, Mode=TwoWay}"
                                   Height="26" FontSize="10" ToolTip="Select Output Device for Media">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -377,9 +375,8 @@
                             <TextBlock Grid.Column="0" Text="💬 CHAT" FontWeight="Bold" FontSize="13" Foreground="#A78BFA" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding ChatVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
                         </Grid>
-                        <ComboBox ItemsSource="{Binding PlaybackDevices}"
-                                  SelectedValuePath="Id"
-                                  SelectedValue="{Binding SelectedChatDeviceId, Mode=TwoWay}"
+                        <ComboBox ItemsSource="{Binding ActivePlaybackDevices}"
+                                  SelectedItem="{Binding SelectedChatDevice, Mode=TwoWay}"
                                   Height="26" FontSize="10" ToolTip="Select Output Device for Voice Chat">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -473,8 +470,7 @@
                             <TextBlock Grid.Column="1" Text="{Binding MicVolume, Converter={StaticResource FloatToPercentageConverter}}" FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
                         </Grid>
                         <ComboBox ItemsSource="{Binding CaptureDevices}"
-                                  SelectedValuePath="Id"
-                                  SelectedValue="{Binding SelectedMicDeviceId, Mode=TwoWay}"
+                                  SelectedItem="{Binding SelectedMicDevice, Mode=TwoWay}"
                                   Height="26" FontSize="10" ToolTip="Select Input Device for Microphone">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -512,7 +508,10 @@
                     </Button>
 
                     <Border Grid.Row="3" Background="#14161C" CornerRadius="6" Padding="10" BorderBrush="#222631" BorderThickness="1">
-                        <TextBlock Text="ClearCast AI Noise Reduction Active via WASAPI Capture" TextWrapping="Wrap" FontSize="10" Foreground="#64748B" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"/>
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="Hardware Mic Stream" FontWeight="SemiBold" FontSize="11" Foreground="#94A3B8" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Native USB Capture Endpoint" FontSize="10" Foreground="#64748B" Margin="0,3,0,0" HorizontalAlignment="Center"/>
+                        </StackPanel>
                     </Border>
                 </Grid>
             </Border>

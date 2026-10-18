@@ -1,8 +1,30 @@
+# Build and publish directories
 [Bb]in/
 [Oo]bj/
-[Ll]og/
-[Ll]ogs/
+publish/
+dist/
+scratch/
+
+# Visual Studio & IDEs
 .vs/
+.idea/
 *.user
 *.suo
-*.pdb
+*.userosscache
+*.sln.docstates
+
+# Logs and diagnostics
+*.log
+[Ll]og/
+[Ll]ogs/
+*.diagnosticpack
+
+# Dotnet temp files
+.dotnet/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Crash dumps
+*.dmp
+*.mdmp

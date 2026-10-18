@@ -36,6 +36,23 @@ namespace NovaSonics.ViewModels
         [ObservableProperty]
         private bool _startMinimizedToTray;
 
+        public string AppVersion { get; } = $"v{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0"}";
+
+        public class SleepTimerOption
+        {
+            public string Display { get; set; } = string.Empty;
+            public int Minutes { get; set; }
+        }
+
+        public System.Collections.Generic.List<SleepTimerOption> SleepTimerOptions { get; } = new()
+        {
+            new() { Display = "Never", Minutes = 0 },
+            new() { Display = "5 Minutes", Minutes = 5 },
+            new() { Display = "15 Minutes", Minutes = 15 },
+            new() { Display = "30 Minutes", Minutes = 30 },
+            new() { Display = "60 Minutes", Minutes = 60 },
+        };
+
         public HardwareViewModel(IHeadsetService headsetService, IConfigService configService, INotificationService notificationService)
         {
             _headsetService = headsetService;
@@ -53,7 +70,7 @@ namespace NovaSonics.ViewModels
 
             _headsetService.SettingsSyncedFromDevice += (s, e) =>
             {
-                Application.Current?.Dispatcher?.Invoke(() =>
+                Application.Current?.Dispatcher?.BeginInvoke(() =>
                 {
                     _isSyncingFromDevice = true;
                     try
