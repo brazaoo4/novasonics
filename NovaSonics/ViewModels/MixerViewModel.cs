@@ -132,18 +132,6 @@ namespace NovaSonics.ViewModels
             SyncMixerService();
             RebindSelectedDevices();
 
-            PlaybackDevices.CollectionChanged += (s, e) =>
-            {
-                App.Current?.Dispatcher?.BeginInvoke(RebindSelectedDevices);
-            };
-            ActivePlaybackDevices.CollectionChanged += (s, e) =>
-            {
-                App.Current?.Dispatcher?.BeginInvoke(RebindSelectedDevices);
-            };
-            CaptureDevices.CollectionChanged += (s, e) =>
-            {
-                App.Current?.Dispatcher?.BeginInvoke(RebindSelectedDevices);
-            };
             _deviceService.DevicesRefreshed += (s, e) =>
             {
                 App.Current?.Dispatcher?.BeginInvoke(RebindSelectedDevices);
@@ -481,6 +469,9 @@ namespace NovaSonics.ViewModels
         partial void OnSelectedMasterDeviceChanged(AudioDeviceModel? value)
         {
             if (_isInternalDeviceSwitch || value == null) return;
+            if (string.Equals(_configService.Config.MasterDeviceId, value.Id, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(ActiveEndpointName, value.Name, StringComparison.Ordinal)) return;
+
             _configService.Config.MasterDeviceId = value.Id;
             ActiveEndpointName = value.Name;
             QueueSave();
@@ -538,6 +529,8 @@ namespace NovaSonics.ViewModels
         {
             OnPropertyChanged(nameof(SelectedGameDeviceId));
             if (_isInternalDeviceSwitch || value == null) return;
+            if (string.Equals(_configService.Config.GameDeviceId, value.Id, StringComparison.OrdinalIgnoreCase)) return;
+
             _configService.Config.GameDeviceId = value.Id;
 
             if (SelectedMasterDevice != null && !string.Equals(value.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase))
@@ -564,6 +557,8 @@ namespace NovaSonics.ViewModels
         {
             OnPropertyChanged(nameof(SelectedMediaDeviceId));
             if (_isInternalDeviceSwitch || value == null) return;
+            if (string.Equals(_configService.Config.MediaDeviceId, value.Id, StringComparison.OrdinalIgnoreCase)) return;
+
             _configService.Config.MediaDeviceId = value.Id;
 
             if (SelectedMasterDevice != null && !string.Equals(value.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase))
@@ -590,6 +585,8 @@ namespace NovaSonics.ViewModels
         {
             OnPropertyChanged(nameof(SelectedChatDeviceId));
             if (_isInternalDeviceSwitch || value == null) return;
+            if (string.Equals(_configService.Config.ChatDeviceId, value.Id, StringComparison.OrdinalIgnoreCase)) return;
+
             _configService.Config.ChatDeviceId = value.Id;
 
             if (SelectedMasterDevice != null && !string.Equals(value.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase))
@@ -616,6 +613,8 @@ namespace NovaSonics.ViewModels
         {
             OnPropertyChanged(nameof(SelectedMicDeviceId));
             if (_isInternalDeviceSwitch || value == null) return;
+            if (string.Equals(_configService.Config.MicDeviceId, value.Id, StringComparison.OrdinalIgnoreCase)) return;
+
             _configService.Config.MicDeviceId = value.Id;
             string micId = value.Id;
             QueueSave();

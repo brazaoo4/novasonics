@@ -9,10 +9,11 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
-using System.Windows.Threading;
 using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
 using NovaSonics.Models;
@@ -89,8 +90,10 @@ namespace NovaSonics.Services
         private string _defaultRenderDeviceId = string.Empty;
         private MMDevice? _defaultCaptureDevice;
         private readonly Dictionary<string, MMDevice> _cachedRenderDevices = new(StringComparer.OrdinalIgnoreCase);
-        private DispatcherTimer? _peakTimer;
-        private DispatcherTimer? _sessionRefreshTimer;
+        private System.Threading.Timer? _peakTimer;
+        private System.Threading.Timer? _sessionRefreshTimer;
+        private int _isPeakPolling;
+        private int _isRefreshingSessions;
         private readonly object _sessionLock = new();
         private readonly Dictionary<int, string> _pidToProcessNameCache = new();
         private readonly List<TrackedSession> _trackedSessions = new();
@@ -287,32 +290,39 @@ namespace NovaSonics.Services
 
             RebindEndpoint();
 
-            _peakTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(33) // ~30 FPS peak metering
-            };
-            _peakTimer.Tick += PeakTimer_Tick;
-            _peakTimer.Start();
+            _peakTimer = new System.Threading.Timer(OnPeakTimer, null, 0, 33); // ~30 FPS peak metering
+            _sessionRefreshTimer = new System.Threading.Timer(OnSessionRefreshTimer, null, 1000, 1000);
+        }
 
-            _sessionRefreshTimer = new DispatcherTimer
+        private void OnPeakTimer(object? state)
+        {
+            if (Interlocked.CompareExchange(ref _isPeakPolling, 1, 0) != 0) return;
+            try
             {
-                Interval = TimeSpan.FromSeconds(1)
-            };
-            _sessionRefreshTimer.Tick += (s, e) =>
+                PollPeaks();
+            }
+            finally
             {
-                try { RefreshSessions(); } catch { }
-            };
-            _sessionRefreshTimer.Start();
+                Interlocked.Exchange(ref _isPeakPolling, 0);
+            }
+        }
+
+        private void OnSessionRefreshTimer(object? state)
+        {
+            if (Interlocked.CompareExchange(ref _isRefreshingSessions, 1, 0) != 0) return;
+            try
+            {
+                RefreshSessions();
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _isRefreshingSessions, 0);
+            }
         }
 
         public void RebindEndpoint(string? targetDeviceId = null)
         {
-            var disp = Application.Current?.Dispatcher;
-            if (disp != null && !disp.CheckAccess())
-            {
-                disp.BeginInvoke(() => RebindEndpoint(targetDeviceId));
-                return;
-            }
+            List<MMDevice> devicesToDispose = new();
 
             lock (_sessionLock)
             {
@@ -323,31 +333,36 @@ namespace NovaSonics.Services
                     {
                         if (!string.Equals(kvp.Key, _defaultRenderDeviceId, StringComparison.OrdinalIgnoreCase))
                         {
-                            try { kvp.Value.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
-                            try { kvp.Value.Dispose(); } catch { }
+                            devicesToDispose.Add(kvp.Value);
                         }
                     }
                     _cachedRenderDevices.Clear();
 
                     if (_defaultRenderDevice != null)
                     {
-                        try { _defaultRenderDevice.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
-                        try { _defaultRenderDevice.AudioEndpointVolume.OnVolumeNotification -= AudioEndpointVolume_OnVolumeNotification; } catch { }
-                        try { _defaultRenderDevice.Dispose(); } catch { }
+                        devicesToDispose.Add(_defaultRenderDevice);
                         _defaultRenderDevice = null;
                         _defaultRenderDeviceId = string.Empty;
                     }
-                    try { _defaultCaptureDevice?.Dispose(); } catch { }
-                    _defaultCaptureDevice = null;
+                    if (_defaultCaptureDevice != null)
+                    {
+                        devicesToDispose.Add(_defaultCaptureDevice);
+                        _defaultCaptureDevice = null;
+                    }
 
                     try
                     {
                         if (!string.IsNullOrEmpty(targetDeviceId))
                         {
-                            _defaultRenderDevice = _enumerator.GetDevice(targetDeviceId);
-                            _defaultRenderDeviceId = _defaultRenderDevice?.ID ?? string.Empty;
+                            var dev = _enumerator.GetDevice(targetDeviceId);
+                            if (dev != null && dev.State == DeviceState.Active)
+                            {
+                                _defaultRenderDevice = dev;
+                                _defaultRenderDeviceId = dev.ID ?? string.Empty;
+                            }
                         }
-                        else
+
+                        if (_defaultRenderDevice == null)
                         {
                             _defaultRenderDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
                             _defaultRenderDeviceId = _defaultRenderDevice?.ID ?? string.Empty;
@@ -390,16 +405,29 @@ namespace NovaSonics.Services
                     }
 
                     _lastRoutedDeviceByProcess.Clear();
-                    UpdateCachedRenderDevices();
+                    UpdateCachedRenderDevices(devicesToDispose);
                     ApplyCaptureVolume();
                 }
                 catch { }
             }
 
+            if (devicesToDispose.Count > 0)
+            {
+                Task.Run(() =>
+                {
+                    foreach (var dev in devicesToDispose)
+                    {
+                        try { dev.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
+                        try { dev.AudioEndpointVolume.OnVolumeNotification -= AudioEndpointVolume_OnVolumeNotification; } catch { }
+                        try { dev.Dispose(); } catch { }
+                    }
+                });
+            }
+
             try { RefreshSessions(); } catch { }
         }
 
-        private void UpdateCachedRenderDevices()
+        private void UpdateCachedRenderDevices(List<MMDevice>? outDevicesToDispose = null)
         {
             try
             {
@@ -430,8 +458,18 @@ namespace NovaSonics.Services
                     {
                         if (!string.Equals(id, _defaultRenderDeviceId, StringComparison.OrdinalIgnoreCase))
                         {
-                            try { dev.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
-                            try { dev.Dispose(); } catch { }
+                            if (outDevicesToDispose != null)
+                            {
+                                outDevicesToDispose.Add(dev);
+                            }
+                            else
+                            {
+                                Task.Run(() =>
+                                {
+                                    try { dev.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
+                                    try { dev.Dispose(); } catch { }
+                                });
+                            }
                         }
                         _cachedRenderDevices.Remove(id);
                     }
@@ -497,7 +535,7 @@ namespace NovaSonics.Services
 
         private void AudioSessionManager_OnSessionCreated(object sender, IAudioSessionControl newSession)
         {
-            Application.Current?.Dispatcher?.InvokeAsync(() =>
+            Task.Run(() =>
             {
                 try { RefreshSessions(); } catch { }
             });
@@ -505,13 +543,6 @@ namespace NovaSonics.Services
 
         public void RefreshSessions()
         {
-            var disp = Application.Current?.Dispatcher;
-            if (disp != null && !disp.CheckAccess())
-            {
-                disp.BeginInvoke(RefreshSessions);
-                return;
-            }
-
             try
             {
                 try
@@ -521,6 +552,7 @@ namespace NovaSonics.Services
                         !string.Equals(currentDef.ID, _defaultRenderDeviceId, StringComparison.OrdinalIgnoreCase))
                     {
                         RebindEndpoint(currentDef.ID);
+                        return;
                     }
                 }
                 catch { }
@@ -825,12 +857,19 @@ namespace NovaSonics.Services
                     var oldTracked = _trackedSessions.ToList();
                     _trackedSessions.Clear();
                     _trackedSessions.AddRange(newTracked);
-                    foreach (var old in oldTracked)
-                    {
-                        old.Dispose();
-                    }
 
                     snapshot = currentModels.Values.ToList();
+
+                    if (oldTracked.Count > 0)
+                    {
+                        Task.Run(() =>
+                        {
+                            foreach (var old in oldTracked)
+                            {
+                                try { old.Dispose(); } catch { }
+                            }
+                        });
+                    }
                 }
 
                 Application.Current?.Dispatcher?.BeginInvoke(() =>
@@ -1077,13 +1116,31 @@ namespace NovaSonics.Services
             }
         }
 
-        private void PeakTimer_Tick(object? sender, EventArgs e)
+        private void PollPeaks()
         {
             try
             {
                 if (_defaultRenderDevice != null)
                 {
-                    try { MasterPeak = _defaultRenderDevice.AudioMeterInformation.MasterPeakValue; } catch { }
+                    try
+                    {
+                        if (_defaultRenderDevice.State == DeviceState.Active)
+                        {
+                            MasterPeak = _defaultRenderDevice.AudioMeterInformation.MasterPeakValue;
+                        }
+                        else
+                        {
+                            MasterPeak = 0f;
+                        }
+                    }
+                    catch
+                    {
+                        MasterPeak = 0f;
+                    }
+                }
+                else
+                {
+                    MasterPeak = 0f;
                 }
 
                 float maxGamePeak = 0f;
@@ -1102,7 +1159,14 @@ namespace NovaSonics.Services
                     {
                         var track = _trackedSessions[i];
                         float peak = 0f;
-                        try { peak = track.Meter.MasterPeakValue; } catch { }
+                        try
+                        {
+                            peak = track.Meter.MasterPeakValue;
+                        }
+                        catch
+                        {
+                            peak = 0f;
+                        }
 
                         if (track.Model != null && peak > track.Model.PeakValue)
                         {
@@ -1122,7 +1186,25 @@ namespace NovaSonics.Services
 
                 if (_defaultCaptureDevice != null)
                 {
-                    try { MicPeak = _defaultCaptureDevice.AudioMeterInformation.MasterPeakValue; } catch { }
+                    try
+                    {
+                        if (_defaultCaptureDevice.State == DeviceState.Active)
+                        {
+                            MicPeak = _defaultCaptureDevice.AudioMeterInformation.MasterPeakValue;
+                        }
+                        else
+                        {
+                            MicPeak = 0f;
+                        }
+                    }
+                    catch
+                    {
+                        MicPeak = 0f;
+                    }
+                }
+                else
+                {
+                    MicPeak = 0f;
                 }
             }
             catch { }
@@ -1132,18 +1214,12 @@ namespace NovaSonics.Services
         {
             if (isActive)
             {
-                if (_peakTimer != null && !_peakTimer.IsEnabled)
-                {
-                    _peakTimer.Start();
-                }
-                if (_sessionRefreshTimer != null)
-                {
-                    _sessionRefreshTimer.Interval = TimeSpan.FromSeconds(1);
-                }
+                _peakTimer?.Change(0, 33);
+                _sessionRefreshTimer?.Change(1000, 1000);
             }
             else
             {
-                _peakTimer?.Stop();
+                _peakTimer?.Change(Timeout.Infinite, Timeout.Infinite);
                 MasterPeak = 0;
                 GamePeak = 0;
                 MediaPeak = 0;
@@ -1156,50 +1232,60 @@ namespace NovaSonics.Services
                         s.PeakValue = 0;
                     }
                 }
-                if (_sessionRefreshTimer != null)
-                {
-                    _sessionRefreshTimer.Interval = TimeSpan.FromSeconds(5);
-                }
+                _sessionRefreshTimer?.Change(5000, 5000);
             }
         }
 
         public void Dispose()
         {
             try { _enumerator.UnregisterEndpointNotificationCallback(this); } catch { }
-            _peakTimer?.Stop();
-            _sessionRefreshTimer?.Stop();
+            _peakTimer?.Dispose();
+            _sessionRefreshTimer?.Dispose();
             _pidToProcessNameCache.Clear();
+
+            List<TrackedSession> sessionsToDispose;
+            List<MMDevice> devicesToDispose = new();
 
             lock (_sessionLock)
             {
-                foreach (var t in _trackedSessions)
-                {
-                    t.Dispose();
-                }
+                sessionsToDispose = _trackedSessions.ToList();
                 _trackedSessions.Clear();
-            }
 
-            foreach (var kvp in _cachedRenderDevices.ToList())
-            {
-                if (!string.Equals(kvp.Key, _defaultRenderDeviceId, StringComparison.OrdinalIgnoreCase))
+                foreach (var kvp in _cachedRenderDevices.ToList())
                 {
-                    try { kvp.Value.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
-                    try { kvp.Value.Dispose(); } catch { }
+                    if (!string.Equals(kvp.Key, _defaultRenderDeviceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        devicesToDispose.Add(kvp.Value);
+                    }
+                }
+                _cachedRenderDevices.Clear();
+
+                if (_defaultRenderDevice != null)
+                {
+                    devicesToDispose.Add(_defaultRenderDevice);
+                    _defaultRenderDevice = null;
+                    _defaultRenderDeviceId = string.Empty;
+                }
+                if (_defaultCaptureDevice != null)
+                {
+                    devicesToDispose.Add(_defaultCaptureDevice);
+                    _defaultCaptureDevice = null;
                 }
             }
-            _cachedRenderDevices.Clear();
 
-            if (_defaultRenderDevice != null)
+            foreach (var t in sessionsToDispose)
             {
-                try { _defaultRenderDevice.AudioEndpointVolume.OnVolumeNotification -= AudioEndpointVolume_OnVolumeNotification; } catch { }
-                try { _defaultRenderDevice.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
-                try { _defaultRenderDevice.Dispose(); } catch { }
-                _defaultRenderDevice = null;
-                _defaultRenderDeviceId = string.Empty;
+                try { t.Dispose(); } catch { }
             }
-            _defaultCaptureDevice?.Dispose();
-            _defaultCaptureDevice = null;
-            _enumerator?.Dispose();
+
+            foreach (var dev in devicesToDispose)
+            {
+                try { dev.AudioSessionManager.OnSessionCreated -= AudioSessionManager_OnSessionCreated; } catch { }
+                try { dev.AudioEndpointVolume.OnVolumeNotification -= AudioEndpointVolume_OnVolumeNotification; } catch { }
+                try { dev.Dispose(); } catch { }
+            }
+
+            try { _enumerator.Dispose(); } catch { }
         }
 
         #region IMMNotificationClient Implementation
@@ -1210,10 +1296,13 @@ namespace NovaSonics.Services
         {
             if (flow == DataFlow.Render && (role == Role.Multimedia || role == Role.Console))
             {
-                if (!string.Equals(_defaultRenderDeviceId, defaultDeviceId, StringComparison.OrdinalIgnoreCase))
+                Task.Run(() =>
                 {
-                    RebindEndpoint(defaultDeviceId);
-                }
+                    if (!string.Equals(_defaultRenderDeviceId, defaultDeviceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        RebindEndpoint(defaultDeviceId);
+                    }
+                });
             }
         }
         public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }

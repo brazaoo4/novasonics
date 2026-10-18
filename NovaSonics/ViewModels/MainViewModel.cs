@@ -58,7 +58,10 @@ namespace NovaSonics.ViewModels
 
             _deviceService.DefaultDeviceChanged += (s, d) =>
             {
-                _mixerService.RebindEndpoint(d?.Id);
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try { _mixerService.RebindEndpoint(d?.Id); } catch { }
+                });
             };
 
             _configService.ConfigImported += (s, e) =>

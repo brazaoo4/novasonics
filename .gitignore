@@ -4,6 +4,7 @@
 publish/
 dist/
 scratch/
+docs/research/
 
 # Visual Studio & IDEs
 .vs/

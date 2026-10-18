@@ -68,7 +68,7 @@ namespace NovaSonics.Services
             catch { }
             if (_headsetService != null)
             {
-                _headsetService.PowerStateChanged += (s, isOnline) => HandleHeadsetPowerStateChanged(isOnline);
+                _headsetService.PowerStateChanged += (s, isOnline) => Task.Run(() => HandleHeadsetPowerStateChanged(isOnline));
             }
         }
 
@@ -223,7 +223,7 @@ namespace NovaSonics.Services
                 int currentIdx = activePriority.FindIndex(d => d.IsDefault);
 
                 // If the current Windows default endpoint is offline (e.g. powered-off Nova 7 dongle) or excluded,
-                // immediately fall back to the highest-priority online device so an online device is always ACTIVE!
+                // mark the highest-priority online device as default for display badge calculations
                 if (currentIdx < 0 && activePriority.Count > 0)
                 {
                     var fallback = activePriority[0];
@@ -233,30 +233,6 @@ namespace NovaSonics.Services
                     }
                     fallback.IsDefault = true;
                     currentIdx = 0;
-
-                    if (!string.IsNullOrEmpty(fallback.Id) && _configService.Config.AutoSwitchEnabled)
-                    {
-                        _pendingDefaultDeviceId = fallback.Id;
-                        _pendingDefaultDeviceExpiry = DateTime.UtcNow.AddMilliseconds(2000);
-                        _isSwitchingEndpoint = true;
-                        _switchCooldownExpiry = DateTime.UtcNow.AddMilliseconds(500);
-                        try
-                        {
-                            SetDefaultEndpointForAllRoles(fallback.Id);
-                            _configService.Config.MasterDeviceId = fallback.Id;
-                            if (_configService.Config.UseSameDeviceOnAllChannels)
-                            {
-                                _configService.Config.GameDeviceId = fallback.Id;
-                                _configService.Config.MediaDeviceId = fallback.Id;
-                                _configService.Config.ChatDeviceId = fallback.Id;
-                            }
-                        }
-                        catch { }
-                        finally
-                        {
-                            _isSwitchingEndpoint = false;
-                        }
-                    }
                 }
 
                 if (currentIdx >= 0 && activePriority.Count > 1)
@@ -550,6 +526,18 @@ namespace NovaSonics.Services
                     _configService.Config.MediaDeviceId = deviceId;
                     _configService.Config.ChatDeviceId = deviceId;
                 }
+                else
+                {
+                    // If a channel's assigned device is no longer online (e.g. headset powered off),
+                    // reassign that channel to the active fallback device so audio isn't lost
+                    var activeIds = PlaybackDevices.Where(d => d.IsOnline && !d.IsExcluded).Select(d => d.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    if (!string.IsNullOrEmpty(_configService.Config.GameDeviceId) && !activeIds.Contains(_configService.Config.GameDeviceId))
+                        _configService.Config.GameDeviceId = deviceId;
+                    if (!string.IsNullOrEmpty(_configService.Config.MediaDeviceId) && !activeIds.Contains(_configService.Config.MediaDeviceId))
+                        _configService.Config.MediaDeviceId = deviceId;
+                    if (!string.IsNullOrEmpty(_configService.Config.ChatDeviceId) && !activeIds.Contains(_configService.Config.ChatDeviceId))
+                        _configService.Config.ChatDeviceId = deviceId;
+                }
                 _configService.Save();
 
                 // Update CurrentDefaultDevice immediately in memory on UI thread for 0ms UI responsiveness
@@ -589,7 +577,6 @@ namespace NovaSonics.Services
                     {
                         DefaultDeviceChanged?.Invoke(this, CurrentDefaultDevice);
                     }
-                    DevicesRefreshed?.Invoke(this, EventArgs.Empty);
                 });
 
                 // If UseSameDeviceOnAllChannels is enabled and we switched to Nova 7, also switch default capture to Nova 7 Mic
