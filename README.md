@@ -34,6 +34,20 @@ NovaSonics communicates **directly with the headset transceiver via USB HID** an
 
 ---
 
+## 📸 Application Showcase
+
+| 🎚️ Multi-Channel Volume Mixer | 🎛️ 10-Band Hardware DAC Parametric EQ |
+| :---: | :---: |
+| ![Volume Mixer](docs/screenshots/01_mixer.png) | ![Hardware Equalizer](docs/screenshots/03_equalizer.png) |
+| *Per-channel routing (GAME, MEDIA, CHAT, MIC), VU peak meters & ChatMix* | *Direct DSP programming across 4 profiles with gaming presets* |
+
+| 🔄 Device Priority & Auto-Switching | ⚙️ Hardware Settings & Telemetry |
+| :---: | :---: |
+| ![Device Manager](docs/screenshots/02_devices.png) | ![Settings & Hardware](docs/screenshots/04_settings.png) |
+| *Intelligent wireless fallback and one-click Volume Mixer cleanup* | *Live battery %, sidetone monitoring, pre-beep alert & backup* |
+
+---
+
 ## ✨ Features
 
 - **🎛️ Physical ChatMix Wheel Synchronization**:
