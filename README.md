@@ -1,5 +1,7 @@
 # NovaSonics 🎧
 
+[![GitHub Release](https://img.shields.io/github/v/release/brazaoo4/novasonics?color=00E5FF&logo=github)](https://github.com/brazaoo4/novasonics/releases)
+[![Build & Release](https://img.shields.io/github/actions/workflow/status/brazaoo4/novasonics/release.yml?logo=github&label=build)](https://github.com/brazaoo4/novasonics/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(x64)-0078D6.svg)](https://microsoft.com)
 [![Framework](https://img.shields.io/badge/.NET-8.0%20WPF-512BD4.svg)](https://dotnet.microsoft.com/)
@@ -80,7 +82,7 @@ NovaSonics supports all variants of the SteelSeries Arctis Nova 7 wireless heads
 ## 🚀 Installation
 
 ### Option 1: Inno Setup Installer (Recommended)
-1. Download the latest installer `NovaSonics-Setup-v1.0.0.exe` from the [Releases](https://github.com/braz/NovaSonics/releases) page.
+1. Download the latest installer `NovaSonics-Setup-v1.0.0.exe` from the [Releases](https://github.com/brazaoo4/novasonics/releases) page.
 2. Run the setup wizard.
    - Choose whether to create a desktop shortcut.
    - Choose whether to launch automatically with Windows (minimized to system tray).
@@ -90,7 +92,7 @@ NovaSonics supports all variants of the SteelSeries Arctis Nova 7 wireless heads
 > **Windows SmartScreen Note**: Because NovaSonics is a freshly built community open-source application without an expensive commercial EV code-signing certificate, Windows SmartScreen may display an alert. Click **"More info"** and then **"Run anyway"**. You can inspect 100% of the source code in this repository.
 
 ### Option 2: Portable Archive (.zip)
-1. Download `NovaSonics-v1.0.0-Portable-win-x64.zip` from [Releases](https://github.com/braz/NovaSonics/releases).
+1. Download `NovaSonics-v1.0.0-Portable-win-x64.zip` from [Releases](https://github.com/brazaoo4/novasonics/releases).
 2. Extract the archive into any folder (e.g. `C:\Tools\NovaSonics`).
 3. Run `NovaSonics.exe`. Settings are saved to `%APPDATA%\NovaSonics\config.json`.
 
@@ -108,8 +110,8 @@ Clone the repository and compile using standard .NET CLI commands:
 
 ```powershell
 # Clone the repository
-git clone https://github.com/braz/NovaSonics.git
-cd NovaSonics
+git clone https://github.com/brazaoo4/novasonics.git
+cd novasonics
 
 # Build Debug configuration
 dotnet build
