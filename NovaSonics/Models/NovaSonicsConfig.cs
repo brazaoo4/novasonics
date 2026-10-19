@@ -116,6 +116,14 @@ namespace NovaSonics.Models
             AppChannelAssignments ??= new Dictionary<string, string>();
             AppChannelAssignments.Remove("audiodg");
             AppChannelAssignments.Remove("audiodg.exe");
+
+            if (!string.IsNullOrEmpty(MasterDeviceId) &&
+                string.Equals(GameDeviceId, MasterDeviceId, System.StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(MediaDeviceId, MasterDeviceId, System.StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(ChatDeviceId, MasterDeviceId, System.StringComparison.OrdinalIgnoreCase))
+            {
+                UseSameDeviceOnAllChannels = true;
+            }
         }
     }
 }

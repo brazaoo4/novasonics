@@ -151,7 +151,12 @@ namespace NovaSonics.ViewModels
 #pragma warning disable MVVMTK0034
                         _selectedMasterDevice = activeDev;
                         OnPropertyChanged(nameof(SelectedMasterDevice));
-                        if (_configService.Config.UseSameDeviceOnAllChannels)
+                        bool syncAll = _configService.Config.UseSameDeviceOnAllChannels ||
+                            (string.Equals(_configService.Config.GameDeviceId, activeDev.Id, StringComparison.OrdinalIgnoreCase) &&
+                             string.Equals(_configService.Config.MediaDeviceId, activeDev.Id, StringComparison.OrdinalIgnoreCase) &&
+                             string.Equals(_configService.Config.ChatDeviceId, activeDev.Id, StringComparison.OrdinalIgnoreCase));
+
+                        if (syncAll)
                         {
                             _selectedGameDevice = activeDev;
                             _selectedMediaDevice = activeDev;
@@ -162,6 +167,7 @@ namespace NovaSonics.ViewModels
                             _configService.Config.GameDeviceId = activeDev.Id;
                             _configService.Config.MediaDeviceId = activeDev.Id;
                             _configService.Config.ChatDeviceId = activeDev.Id;
+                            _configService.Config.UseSameDeviceOnAllChannels = true;
                             OnPropertyChanged(nameof(SelectedGameDeviceId));
                             OnPropertyChanged(nameof(SelectedMediaDeviceId));
                             OnPropertyChanged(nameof(SelectedChatDeviceId));
@@ -171,6 +177,26 @@ namespace NovaSonics.ViewModels
                         }
                         else
                         {
+                            var targetGame = (!string.IsNullOrEmpty(_configService.Config.GameDeviceId)
+                                ? ActivePlaybackDevices.FirstOrDefault(d => d.Id == _configService.Config.GameDeviceId)
+                                : null) ?? activeDev;
+                            var targetMedia = (!string.IsNullOrEmpty(_configService.Config.MediaDeviceId)
+                                ? ActivePlaybackDevices.FirstOrDefault(d => d.Id == _configService.Config.MediaDeviceId)
+                                : null) ?? activeDev;
+                            var targetChat = (!string.IsNullOrEmpty(_configService.Config.ChatDeviceId)
+                                ? ActivePlaybackDevices.FirstOrDefault(d => d.Id == _configService.Config.ChatDeviceId)
+                                : null) ?? activeDev;
+
+                            _selectedGameDevice = targetGame;
+                            _selectedMediaDevice = targetMedia;
+                            _selectedChatDevice = targetChat;
+                            OnPropertyChanged(nameof(SelectedGameDevice));
+                            OnPropertyChanged(nameof(SelectedMediaDevice));
+                            OnPropertyChanged(nameof(SelectedChatDevice));
+                            OnPropertyChanged(nameof(SelectedGameDeviceId));
+                            OnPropertyChanged(nameof(SelectedMediaDeviceId));
+                            OnPropertyChanged(nameof(SelectedChatDeviceId));
+
                             EnforceAllChannelRoutes();
                         }
 #pragma warning restore MVVMTK0034
@@ -333,8 +359,14 @@ namespace NovaSonics.ViewModels
                     ? ActivePlaybackDevices.FirstOrDefault(d => d.Id == cfg.ChatDeviceId) 
                     : null) ?? targetMaster ?? defOut;
 
-                if (cfg.UseSameDeviceOnAllChannels)
+                bool syncAll = cfg.UseSameDeviceOnAllChannels ||
+                    (string.Equals(cfg.GameDeviceId, cfg.MediaDeviceId, StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(cfg.MediaDeviceId, cfg.ChatDeviceId, StringComparison.OrdinalIgnoreCase) &&
+                     !string.IsNullOrEmpty(cfg.GameDeviceId));
+
+                if (syncAll)
                 {
+                    cfg.UseSameDeviceOnAllChannels = true;
                     targetGame = targetMaster ?? defOut;
                     targetMedia = targetMaster ?? defOut;
                     targetChat = targetMaster ?? defOut;
@@ -537,6 +569,13 @@ namespace NovaSonics.ViewModels
             {
                 _configService.Config.UseSameDeviceOnAllChannels = false;
             }
+            else if (SelectedMasterDevice != null &&
+                     string.Equals(value.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(SelectedMediaDevice?.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(SelectedChatDevice?.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                _configService.Config.UseSameDeviceOnAllChannels = true;
+            }
 
             QueueSave();
 
@@ -565,6 +604,13 @@ namespace NovaSonics.ViewModels
             {
                 _configService.Config.UseSameDeviceOnAllChannels = false;
             }
+            else if (SelectedMasterDevice != null &&
+                     string.Equals(value.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(SelectedGameDevice?.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(SelectedChatDevice?.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                _configService.Config.UseSameDeviceOnAllChannels = true;
+            }
 
             QueueSave();
 
@@ -592,6 +638,13 @@ namespace NovaSonics.ViewModels
             if (SelectedMasterDevice != null && !string.Equals(value.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase))
             {
                 _configService.Config.UseSameDeviceOnAllChannels = false;
+            }
+            else if (SelectedMasterDevice != null &&
+                     string.Equals(value.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(SelectedGameDevice?.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(SelectedMediaDevice?.Id, SelectedMasterDevice.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                _configService.Config.UseSameDeviceOnAllChannels = true;
             }
 
             QueueSave();

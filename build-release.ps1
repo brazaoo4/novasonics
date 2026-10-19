@@ -204,7 +204,13 @@ foreach ($targetDir in $targetDirs) {
     }
 }
 
-if (-not $localUpdated) {
+if ($localUpdated) {
+    $installedExe = "C:\Program Files\NovaSonics\NovaSonics.exe"
+    if (Test-Path $installedExe) {
+        Write-Host "  Starting updated NovaSonics..." -ForegroundColor Cyan
+        Start-Process -FilePath $installedExe -WorkingDirectory (Split-Path $installedExe -Parent)
+    }
+} else {
     Write-Host "  Launching setup installer to apply updates locally..." -ForegroundColor Cyan
     cmd.exe /c start "" $setupPath
 }

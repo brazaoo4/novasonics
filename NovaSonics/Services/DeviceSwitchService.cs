@@ -519,9 +519,16 @@ namespace NovaSonics.Services
             }
             if (ok)
             {
+                string previousDefaultId = _configService.Config.MasterDeviceId ?? string.Empty;
                 _configService.Config.MasterDeviceId = deviceId;
-                if (_configService.Config.UseSameDeviceOnAllChannels)
+
+                bool shouldSyncAll = _configService.Config.UseSameDeviceOnAllChannels ||
+                    (string.Equals(_configService.Config.GameDeviceId, _configService.Config.MediaDeviceId, StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(_configService.Config.MediaDeviceId, _configService.Config.ChatDeviceId, StringComparison.OrdinalIgnoreCase));
+
+                if (shouldSyncAll)
                 {
+                    _configService.Config.UseSameDeviceOnAllChannels = true;
                     _configService.Config.GameDeviceId = deviceId;
                     _configService.Config.MediaDeviceId = deviceId;
                     _configService.Config.ChatDeviceId = deviceId;
@@ -529,14 +536,26 @@ namespace NovaSonics.Services
                 else
                 {
                     // If a channel's assigned device is no longer online (e.g. headset powered off),
-                    // reassign that channel to the active fallback device so audio isn't lost
+                    // or if it was following the previous default device, reassign that channel to the active target device
                     var activeIds = PlaybackDevices.Where(d => d.IsOnline && !d.IsExcluded).Select(d => d.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                    if (!string.IsNullOrEmpty(_configService.Config.GameDeviceId) && !activeIds.Contains(_configService.Config.GameDeviceId))
+                    if (string.IsNullOrEmpty(_configService.Config.GameDeviceId) ||
+                        !activeIds.Contains(_configService.Config.GameDeviceId) ||
+                        string.Equals(_configService.Config.GameDeviceId, previousDefaultId, StringComparison.OrdinalIgnoreCase))
+                    {
                         _configService.Config.GameDeviceId = deviceId;
-                    if (!string.IsNullOrEmpty(_configService.Config.MediaDeviceId) && !activeIds.Contains(_configService.Config.MediaDeviceId))
+                    }
+                    if (string.IsNullOrEmpty(_configService.Config.MediaDeviceId) ||
+                        !activeIds.Contains(_configService.Config.MediaDeviceId) ||
+                        string.Equals(_configService.Config.MediaDeviceId, previousDefaultId, StringComparison.OrdinalIgnoreCase))
+                    {
                         _configService.Config.MediaDeviceId = deviceId;
-                    if (!string.IsNullOrEmpty(_configService.Config.ChatDeviceId) && !activeIds.Contains(_configService.Config.ChatDeviceId))
+                    }
+                    if (string.IsNullOrEmpty(_configService.Config.ChatDeviceId) ||
+                        !activeIds.Contains(_configService.Config.ChatDeviceId) ||
+                        string.Equals(_configService.Config.ChatDeviceId, previousDefaultId, StringComparison.OrdinalIgnoreCase))
+                    {
                         _configService.Config.ChatDeviceId = deviceId;
+                    }
                 }
                 _configService.Save();
 
@@ -579,11 +598,8 @@ namespace NovaSonics.Services
                     }
                 });
 
-                // If UseSameDeviceOnAllChannels is enabled and we switched to Nova 7, also switch default capture to Nova 7 Mic
-                if (_configService.Config.UseSameDeviceOnAllChannels)
-                {
-                    TrySyncCaptureDevice(deviceId);
-                }
+                // Always synchronize capture device when switching to/from Nova headset!
+                TrySyncCaptureDevice(deviceId);
 
                 // Run full re-scan in background so UI thread never stutters (never delete PropertyStore keys during normal device switches)
                 Task.Run(() =>
@@ -671,6 +687,17 @@ namespace NovaSonics.Services
                                 !cap.FriendlyName.Contains("SteelSeries Sonar", StringComparison.OrdinalIgnoreCase))
                             {
                                 SetDefaultEndpointForAllRoles(cap.ID);
+                                _configService.Config.MicDeviceId = cap.ID;
+                                _configService.Save();
+
+                                RunOnUI(() =>
+                                {
+                                    foreach (var d in CaptureDevices)
+                                    {
+                                        d.IsDefault = string.Equals(d.Id, cap.ID, StringComparison.OrdinalIgnoreCase);
+                                    }
+                                    CurrentDefaultCaptureDevice = CaptureDevices.FirstOrDefault(d => string.Equals(d.Id, cap.ID, StringComparison.OrdinalIgnoreCase));
+                                });
                                 break;
                             }
                         }
@@ -693,6 +720,17 @@ namespace NovaSonics.Services
                                 !cap.FriendlyName.Contains("SteelSeries Sonar", StringComparison.OrdinalIgnoreCase))
                             {
                                 SetDefaultEndpointForAllRoles(cap.ID);
+                                _configService.Config.MicDeviceId = cap.ID;
+                                _configService.Save();
+
+                                RunOnUI(() =>
+                                {
+                                    foreach (var d in CaptureDevices)
+                                    {
+                                        d.IsDefault = string.Equals(d.Id, cap.ID, StringComparison.OrdinalIgnoreCase);
+                                    }
+                                    CurrentDefaultCaptureDevice = CaptureDevices.FirstOrDefault(d => string.Equals(d.Id, cap.ID, StringComparison.OrdinalIgnoreCase));
+                                });
                                 break;
                             }
                         }
@@ -742,22 +780,40 @@ namespace NovaSonics.Services
         public void HandleHeadsetPowerStateChanged(bool isOnline)
         {
             _lastKnownHeadsetOnline = isOnline;
-            var devices = RefreshDevices();
 
-            if (!_configService.Config.AutoSwitchEnabled) return;
+            if (!_configService.Config.AutoSwitchEnabled)
+            {
+                RefreshDevices();
+                return;
+            }
 
             if (isOnline)
             {
-                // Headset just powered ON -> switch to Nova / Arctis headset if active and not excluded
-                var novaDevice = devices.FirstOrDefault(d => d.IsNovaHeadset && !d.IsExcluded && d.IsOnline);
-                if (novaDevice != null && !string.IsNullOrEmpty(novaDevice.Id))
+                // Headset just powered ON -> wait for Windows audio endpoint to be Active and switch
+                Task.Run(async () =>
                 {
-                    SwitchToDevice(novaDevice.Id);
-                    _notificationService?.ShowCustomToast("Headset Connected", $"{novaDevice.Name} is online. Audio routed to headset.");
-                }
+                    AudioDeviceModel? novaDevice = null;
+                    for (int attempt = 0; attempt < 5; attempt++)
+                    {
+                        var devices = RefreshDevices();
+                        novaDevice = devices.FirstOrDefault(d => d.IsNovaHeadset && !d.IsExcluded && d.IsOnline);
+                        if (novaDevice != null && !string.IsNullOrEmpty(novaDevice.Id))
+                        {
+                            break;
+                        }
+                        await Task.Delay(350);
+                    }
+
+                    if (novaDevice != null && !string.IsNullOrEmpty(novaDevice.Id))
+                    {
+                        SwitchToDevice(novaDevice.Id);
+                        _notificationService?.ShowCustomToast("Headset Connected", $"{novaDevice.Name} is online. Audio routed to headset.");
+                    }
+                });
             }
             else if (_configService.Config.AutoSwitchOnPowerOff || _configService.Config.AutoSwitchAtBoot)
             {
+                var devices = RefreshDevices();
                 // Headset is OFF -> switch to highest-priority non-excluded fallback device (e.g. JBL, Monitor, Speakers)
                 var fallback = devices
                     .Where(d => !d.IsNovaHeadset && !d.IsExcluded && d.IsOnline)
@@ -769,6 +825,10 @@ namespace NovaSonics.Services
                     SwitchToDevice(fallback.Id);
                     _notificationService?.ShowCustomToast("Headset Offline", $"Headset powered off. Fallback to {fallback.Name}.");
                 }
+            }
+            else
+            {
+                RefreshDevices();
             }
         }
 
@@ -852,18 +912,17 @@ namespace NovaSonics.Services
                     }
                     else
                     {
-                        // Check if a higher-priority online device NEWLY connected (transitioned from offline to online)
-                        var newlyConnected = currentOnline
-                            .Where(d => !_knownOnlineDeviceIds.Contains(d.Id))
+                        // Check if a higher-priority online device is available
+                        var topPriority = currentOnline
                             .OrderBy(d => d.PriorityOrder)
                             .FirstOrDefault();
 
-                        if (newlyConnected != null && CurrentDefaultDevice != null &&
-                            newlyConnected.PriorityOrder < CurrentDefaultDevice.PriorityOrder &&
-                            newlyConnected.Id != CurrentDefaultDevice.Id)
+                        if (topPriority != null && CurrentDefaultDevice != null &&
+                            topPriority.PriorityOrder < CurrentDefaultDevice.PriorityOrder &&
+                            topPriority.Id != CurrentDefaultDevice.Id)
                         {
-                            SwitchToDevice(newlyConnected.Id);
-                            _notificationService?.ShowCustomToast("Device Connected", $"{newlyConnected.Name} is online. Switched to high-priority output.");
+                            SwitchToDevice(topPriority.Id);
+                            _notificationService?.ShowCustomToast("Device Connected", $"{topPriority.Name} is online. Switched to high-priority output.");
                         }
                     }
 

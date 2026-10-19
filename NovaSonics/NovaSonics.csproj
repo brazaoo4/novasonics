@@ -9,9 +9,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>NovaSonics</RootNamespace>
     <AssemblyName>NovaSonics</AssemblyName>
-    <Version>1.0.1</Version>
-    <AssemblyVersion>1.0.1.0</AssemblyVersion>
-    <FileVersion>1.0.1.0</FileVersion>
+    <Version>1.0.2</Version>
+    <AssemblyVersion>1.0.2.0</AssemblyVersion>
+    <FileVersion>1.0.2.0</FileVersion>
     <Product>NovaSonics</Product>
     <Description>Lightweight native Windows audio mixer and hardware controller for SteelSeries Arctis Nova 7</Description>
     <Copyright>Copyright © 2026</Copyright>

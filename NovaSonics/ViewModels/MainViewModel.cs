@@ -173,6 +173,11 @@ namespace NovaSonics.ViewModels
             App.Current?.Dispatcher?.BeginInvoke(() =>
             {
                 DeviceManagerVM.RefreshLists();
+                MixerVM.RebindSelectedDevices();
+                if (isOnline)
+                {
+                    EqualizerVM.ReloadFromConfig();
+                }
             });
         }
 
