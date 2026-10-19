@@ -98,6 +98,13 @@ if ($LASTEXITCODE -ne 0) {
 # Clean any stray temp files
 Get-ChildItem -Path $publishDir -Filter "*.pdb" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
+# Copy standalone portable update script into publish directory
+$cliUpdateScript = Join-Path $ScriptRoot "Scripts\update-portable.ps1"
+if (Test-Path $cliUpdateScript) {
+    Copy-Item -Path $cliUpdateScript -Destination (Join-Path $publishDir "update-portable.ps1") -Force
+    Copy-Item -Path $cliUpdateScript -Destination (Join-Path $publishDir "update.ps1") -Force
+}
+
 # 6. Package Portable ZIP Archive
 Write-Host "[3/4] Creating portable ZIP archive..." -ForegroundColor Green
 $zipFilename = "NovaSonics-v$version-Portable-$Runtime.zip"

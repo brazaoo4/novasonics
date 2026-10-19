@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.0.3"
 #endif
 
 [Setup]
@@ -8,9 +8,9 @@ AppName=NovaSonics
 AppVersion={#MyAppVersion}
 AppVerName=NovaSonics v{#MyAppVersion}
 AppPublisher=NovaSonics Open Source
-AppPublisherURL=https://github.com/braz/NovaSonics
-AppSupportURL=https://github.com/braz/NovaSonics/issues
-AppUpdatesURL=https://github.com/braz/NovaSonics/releases
+AppPublisherURL=https://github.com/brazaoo4/novasonics
+AppSupportURL=https://github.com/brazaoo4/novasonics/issues
+AppUpdatesURL=https://github.com/brazaoo4/novasonics/releases
 DefaultDirName={autopf}\NovaSonics
 DefaultGroupName=NovaSonics
 DisableProgramGroupPage=yes
@@ -24,6 +24,8 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 CloseApplications=force
 RestartApplications=no
+UsePreviousAppDir=yes
+UsePreviousTasks=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 WizardStyle=modern

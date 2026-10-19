@@ -37,7 +37,8 @@ namespace NovaSonics.ViewModels
             IDeviceSwitchService deviceService,
             IConfigService configService,
             INotificationService notificationService,
-            IAudioRoutingService routingService)
+            IAudioRoutingService routingService,
+            IUpdateService updateService)
         {
             _headsetService = headsetService;
             _mixerService = mixerService;
@@ -50,7 +51,7 @@ namespace NovaSonics.ViewModels
             MixerVM = new MixerViewModel(_mixerService, _deviceService, _configService, routingService);
             DeviceManagerVM = new DeviceManagerViewModel(_deviceService, _configService, _notificationService);
             EqualizerVM = new EqualizerViewModel(_headsetService, _configService, _notificationService);
-            HardwareVM = new HardwareViewModel(_headsetService, _configService, _notificationService);
+            HardwareVM = new HardwareViewModel(_headsetService, _configService, _notificationService, updateService);
 
             _headsetService.StatusUpdated += OnHeadsetStatusUpdated;
             _headsetService.ChatMixChanged += OnChatMixChanged;

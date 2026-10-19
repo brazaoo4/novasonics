@@ -13,6 +13,8 @@ namespace NovaSonics.ViewModels
         private readonly IHeadsetService _headsetService;
         private readonly IConfigService _configService;
         private readonly INotificationService _notificationService;
+        private readonly IUpdateService _updateService;
+        private UpdateInfoModel? _latestUpdateInfo;
         private bool _isSyncingFromDevice;
 
         [ObservableProperty]
@@ -36,7 +38,21 @@ namespace NovaSonics.ViewModels
         [ObservableProperty]
         private bool _startMinimizedToTray;
 
+        [ObservableProperty]
+        private string _updateStatusText = "Up to date";
+
+        [ObservableProperty]
+        private bool _isUpdateAvailable;
+
+        [ObservableProperty]
+        private bool _isBusyUpdating;
+
+        [ObservableProperty]
+        private double _downloadProgress;
+
         public string AppVersion { get; } = $"v{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0"}";
+
+        public string CurrentVersionDisplay => _updateService.CurrentVersionDisplay;
 
         public class SleepTimerOption
         {
@@ -53,11 +69,19 @@ namespace NovaSonics.ViewModels
             new() { Display = "60 Minutes", Minutes = 60 },
         };
 
-        public HardwareViewModel(IHeadsetService headsetService, IConfigService configService, INotificationService notificationService)
+        public HardwareViewModel(
+            IHeadsetService headsetService,
+            IConfigService configService,
+            INotificationService notificationService,
+            IUpdateService updateService)
         {
             _headsetService = headsetService;
             _configService = configService;
             _notificationService = notificationService;
+            _updateService = updateService;
+
+            // Delayed silent update check after 8 seconds
+            Task.Delay(8000).ContinueWith(_ => CheckForUpdatesSilently());
 
             var cfg = _configService.Config;
             _batteryAlertThreshold = cfg.BatteryAlertThreshold;
@@ -183,6 +207,86 @@ namespace NovaSonics.ViewModels
 
                     _notificationService.ShowCustomToast("NovaSonics", "Settings successfully imported!");
                 }
+            }
+        }
+
+        private async Task CheckForUpdatesSilently()
+        {
+            try
+            {
+                var info = await _updateService.CheckForUpdateAsync();
+                if (info != null && info.IsUpdateAvailable)
+                {
+                    Application.Current?.Dispatcher?.BeginInvoke(() =>
+                    {
+                        _latestUpdateInfo = info;
+                        IsUpdateAvailable = true;
+                        UpdateStatusText = $"Update available: v{info.LatestVersion}";
+                    });
+                }
+            }
+            catch { }
+        }
+
+        [RelayCommand]
+        public async Task CheckForUpdatesAsync()
+        {
+            if (IsBusyUpdating) return;
+
+            UpdateStatusText = "Checking for updates...";
+            try
+            {
+                var info = await _updateService.CheckForUpdateAsync();
+                if (info == null)
+                {
+                    UpdateStatusText = "Could not check for updates.";
+                    return;
+                }
+
+                _latestUpdateInfo = info;
+                IsUpdateAvailable = info.IsUpdateAvailable;
+                if (info.IsUpdateAvailable)
+                {
+                    UpdateStatusText = $"Update available: v{info.LatestVersion}";
+                }
+                else
+                {
+                    UpdateStatusText = "NovaSonics is up to date.";
+                }
+            }
+            catch (Exception ex)
+            {
+                UpdateStatusText = "Failed to check for updates.";
+                App.LogCrash("CheckForUpdates", ex);
+            }
+        }
+
+        [RelayCommand]
+        public async Task DownloadAndInstallUpdateAsync()
+        {
+            if (_latestUpdateInfo == null || !_latestUpdateInfo.IsUpdateAvailable || IsBusyUpdating)
+                return;
+
+            IsBusyUpdating = true;
+            DownloadProgress = 0;
+            UpdateStatusText = "Downloading update... 0%";
+
+            try
+            {
+                var progress = new Progress<double>(pct =>
+                {
+                    DownloadProgress = pct;
+                    UpdateStatusText = $"Downloading update... {pct:F0}%";
+                });
+
+                await _updateService.DownloadAndApplyUpdateAsync(_latestUpdateInfo, progress);
+                UpdateStatusText = "Applying update & restarting...";
+            }
+            catch (Exception ex)
+            {
+                IsBusyUpdating = false;
+                UpdateStatusText = "Update failed: " + ex.Message;
+                App.LogCrash("DownloadAndInstallUpdate", ex);
             }
         }
     }

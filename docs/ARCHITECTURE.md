@@ -21,6 +21,7 @@ flowchart TD
         Switch["DeviceSwitchService\n• IMMNotificationClient Topology Watcher\n• 300ms Coalescing Debounce Timer\n• Wireless Power-State Aware Priority Fallback\n• Sleep/Wake Settle Delay (2.5s) & APO Registry Sanitizer"]
         Router["AudioRoutingService & AudioPolicyConfigInterop\n• Unambiguous FriendlyName & MMDevice ID Endpoint Routing\n• Native WinRT Interop (<1ms Instantaneous Redirection)\n• ClearAllPersistedEndpoints() Mixer Purge"]
         Config["ConfigService\n• Thread-Safe Mutex Lock\n• Atomic .tmp File Swap Persistence\n• %APPDATA%\\NovaSonics\\config.json"]
+        Updater["UpdateService\n• Dual-Mode (Installed/Portable) GitHub Release In-Place Updater\n• Zone.Identifier Stripping & Smart Inno/Zip Selection\n• Hidden Self-Terminating Process Wait Scripts"]
     end
 
     subgraph ViewModels["MVVM Presentation Layer (NovaSonics.ViewModels)"]
@@ -28,12 +29,12 @@ flowchart TD
         MixerVM["MixerViewModel\n• Master/Game/Chat/Media/Mic Faders\n• Authentic Hardware Mic Card & Session Drag-Drop"]
         DeviceVM["DeviceManagerViewModel\n• Output/Input Priority Ordering & Offline Memory\n• Volume Mixer Cache Cleanup (PropertyStore + WinRT Reset)"]
         EqVM["EqualizerViewModel\n• Hardware DAC Profile Slots (Game, Media, Voice, Custom)\n• Real-Time Volatile 0x33 Write & Debounced EEPROM Commit"]
-        HwVM["HardwareViewModel\n• Sidetone, Mic Gain, Sleep Timer, LEDs\n• Immediate Volatile Feedback + Debounced Flash Write"]
+        HwVM["HardwareViewModel\n• Sidetone, Mic Gain, Sleep Timer, LEDs\n• Immediate Volatile Feedback + Debounced Flash Write\n• In-App One-Click GitHub Release Updater"]
     end
 
     subgraph UI["WPF Views & Win32 Shell Integration"]
         Window["MainWindow + HwndSource Hook\n• Global Hotkeys (Ctrl+Alt+...)\n• IsVisibleChanged / StateChanged Zero-CPU Pause Hooks"]
-        Views["Tab Views\n• MixerView (Authentic Hardware Mic Card)\n• DeviceManagerView (Priority & Status Badges)\n• EqualizerView (Hardware DAC Profile Slots & 10-Band Sliders)\n• HardwareView (Headset Flash Config & Battery Gauge)"]
+        Views["Tab Views\n• MixerView (Authentic Hardware Mic Card)\n• DeviceManagerView (Priority & Status Badges)\n• EqualizerView (Hardware DAC Profile Slots & 10-Band Sliders)\n• HardwareView (Headset Flash Config, Updates & Battery Gauge)"]
         Crash["App.xaml.cs Global Fault Tolerance\n• Rolling 1 MB %APPDATA%\\NovaSonics\\crash.log\n• DispatcherUnhandledException & UnobservedTaskException"]
     end
 
@@ -52,6 +53,7 @@ flowchart TD
     Switch <-->|"PlaybackDevices / CaptureDevices"| DeviceVM
     Switch <-->|"Per-Channel Device Lists"| MixerVM
     Router <-->|"RouteAppsToDevice"| MixerVM
+    Updater <-->|"CheckForUpdate / DownloadAndApply"| HwVM
 
     Config <--> MainVM
     Config <--> Mixer
@@ -146,6 +148,23 @@ Routes individual mixer channels (`Game`, `Media`, `Chat`, `Mic`) to specific ph
 * Persists configuration to `%APPDATA%\NovaSonics\config.json` with a `.bak` backup copy (`config.bak.json`).
 * Uses a dedicated `_fileLock` object, `FileStream.Flush(flushToDisk: true)`, and an atomic `.tmp` swap file write pattern (`File.Copy(configPath, bakPath, true); File.Move(tmpPath, configPath, overwrite: true)`), completely preventing file corruption during sudden system shutdowns.
 * Runs `NovaSonicsConfig.ValidateAndSanitize()` on `Load`, `Save`, `Export`, and `Import` to clamp all volume/balance/hardware fields, validate 10-band EQ arrays, and initialize null collections.
+
+#### 6. `UpdateService.cs` (Dual-Mode In-App GitHub Release In-Place Updater)
+Provides fully autonomous, one-click in-place application updates for both Installed (`Inno Setup`) and Portable (`ZIP`) installations directly from the Settings tab:
+* **Installation Mode Detection**:
+  * Detects presence of `unins000.exe` in `AppContext.BaseDirectory` to identify `IsInstalledVersion`.
+  * Exposes `CurrentVersionDisplay` (e.g. `v1.0.3 (Installed)` or `v1.0.3 (Portable)`).
+* **GitHub Releases API Query**:
+  * Queries `https://api.github.com/repos/brazaoo4/novasonics/releases/latest` with a 10s timeout and `User-Agent: NovaSonics-Updater`.
+  * Dynamically selects the proper release asset: `*Setup*.exe` for Installed builds or `*Portable*.zip` for Portable builds.
+  * Compares remote release tag (`vX.Y.Z`) against executing assembly version.
+* **Dual-Mode Download & Apply Architecture**:
+  * Streams payload with progress reporting (`IProgress<double>`) into `%TEMP%` using an 80 KB buffer.
+  * Automatically strips the NTFS `Zone.Identifier` alternate data stream to bypass Windows SmartScreen extraction and execution locks.
+  * **Installed Branch**: Generates a self-terminating PowerShell script (`novasonics_update_installed.ps1`) that waits up to 10 seconds for the current process PID to release mutex and file locks, executes the Inno Setup installer with `/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS` (elevating with `-Verb RunAs` if installed under Program Files), relaunches `NovaSonics.exe`, and cleans up.
+  * **Portable Branch**: Extracts archive to `%TEMP%\NovaSonics_Portable_Staging`, dynamically discovers the payload directory containing `NovaSonics.exe`, generates a hidden PowerShell script (`novasonics_update_portable.ps1`) that waits for process termination, overwrites files into the target folder via `Copy-Item -Recurse -Force`, cleans staging files, and relaunches `NovaSonics.exe`.
+  * Initiates clean application shutdown via `App.ExitApplication()`, disarming tray-minimize cancellation.
+* **Fallback Script**: Standalone `Scripts/update-portable.ps1` bundled inside portable releases for manual CLI-based updates.
 
 ---
 

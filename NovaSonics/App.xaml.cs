@@ -31,6 +31,7 @@ namespace NovaSonics
         private DeviceSwitchService? _deviceService;
         private ConfigService? _configService;
         private ToastNotificationService? _notificationService;
+        private UpdateService? _updateService;
         private MainWindow? _mainWindow;
 
         public bool IsSessionEnding { get; private set; }
@@ -132,6 +133,7 @@ namespace NovaSonics
 
             _configService = new ConfigService();
             _notificationService = new ToastNotificationService();
+            _updateService = new UpdateService();
             _headsetService = new ArctisNova7Device();
             _routingService = new AudioRoutingService();
             _mixerService = new WasapiSessionMixer(_configService, _routingService);
@@ -146,7 +148,8 @@ namespace NovaSonics
                 _deviceService,
                 _configService,
                 _notificationService,
-                _routingService);
+                _routingService,
+                _updateService);
 
             _mainWindow = new MainWindow(mainVm, _configService);
 
@@ -189,6 +192,32 @@ namespace NovaSonics
             _singleInstanceMutex?.Dispose();
             _singleInstanceMutex = null;
             base.OnExit(e);
+        }
+
+        public static void ExitApplication()
+        {
+            try
+            {
+                if (Current?.Dispatcher != null && !Current.Dispatcher.HasShutdownStarted)
+                {
+                    Current.Dispatcher.Invoke(() =>
+                    {
+                        if (Current is App app && app._mainWindow != null)
+                        {
+                            app._mainWindow.PrepareForExit();
+                        }
+                        Current.Shutdown();
+                    });
+                }
+                else
+                {
+                    Environment.Exit(0);
+                }
+            }
+            catch
+            {
+                Environment.Exit(0);
+            }
         }
 
         public static void LogCrash(string source, object? exObj)
