@@ -260,7 +260,61 @@
                 </StackPanel>
             </Border>
 
-            <!-- 3. Application Updates -->
+            <!-- 3. Portable Backup & Restore -->
+            <Border Background="#181A20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
+                <StackPanel>
+                    <Grid Margin="0,0,0,14">
+                        <StackPanel>
+                            <TextBlock Text="💾 PORTABLE BACKUP &amp; RESTORE" FontSize="13" FontWeight="Black" Foreground="#10B981"/>
+                            <TextBlock Text="All volume balances, EQ presets, channel mappings, and priority rules are stored in a human-readable config.json file."
+                                       FontSize="11" Foreground="#94A3B8" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Command="{Binding ExportSettingsCommand}" Padding="14,8" Background="#065F46" BorderBrush="#059669"
+                                Foreground="#ECFDF5" FontWeight="Bold" Margin="0,0,12,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="📤 Export Settings (JSON)" FontSize="11"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button Command="{Binding ImportSettingsCommand}" Padding="14,8" Background="#1E222B" BorderBrush="#334155"
+                                Foreground="#F8FAFC" FontWeight="SemiBold">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="📥 Import Settings (JSON)" FontSize="11"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 4. Windows Startup & System Integration -->
+            <Border Background="#181A20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Text="🚀 WINDOWS STARTUP &amp; SYSTEM INTEGRATION" FontSize="13" FontWeight="Black" Foreground="#00E5FF"/>
+                        <TextBlock Text="Launch NovaSonics silently in the background when Windows boots, residing in the system notification tray."
+                                   FontSize="11" Foreground="#94A3B8" Margin="0,3,0,0"/>
+                    </StackPanel>
+
+                    <Border Grid.Column="1" Background="#14161C" CornerRadius="6" Padding="14,10" BorderBrush="#252A36" BorderThickness="1" VerticalAlignment="Center">
+                        <CheckBox Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding StartMinimizedToTray, Mode=TwoWay}">
+                            <StackPanel Margin="6,0,0,0">
+                                <TextBlock Text="Start Minimized to System Tray" FontWeight="SemiBold" FontSize="11" Foreground="#E2E8F0"/>
+                                <TextBlock Text="Run on Windows startup" FontSize="9" Foreground="#64748B"/>
+                            </StackPanel>
+                        </CheckBox>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- 5. About & Application Updates -->
             <Border Background="#181A20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
                 <StackPanel>
                     <Grid Margin="0,0,0,14">
@@ -269,14 +323,14 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <StackPanel Grid.Column="0">
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
-                                <TextBlock Text="🔄 APPLICATION UPDATES" FontSize="13" FontWeight="Black" Foreground="#00E5FF"/>
-                                <Border Background="#1E293B" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="NOVASONICS" FontSize="13" FontWeight="Black" Foreground="#00E5FF"/>
+                                <Border Background="#1E293B" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="GitHub Releases" FontSize="10" FontWeight="Bold" Foreground="#38BDF8"/>
                                 </Border>
                             </StackPanel>
-                            <TextBlock Text="Check for official NovaSonics releases and apply updates seamlessly in-place."
+                            <TextBlock Text="Lightweight native Windows audio mixer and hardware controller for SteelSeries Arctis Nova 7."
                                        FontSize="11" Foreground="#94A3B8"/>
                         </StackPanel>
 
@@ -327,80 +381,6 @@
                         </StackPanel>
                     </Border>
                 </StackPanel>
-            </Border>
-
-            <!-- 4. Portable Backup & Restore -->
-            <Border Background="#181A20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
-                <StackPanel>
-                    <Grid Margin="0,0,0,14">
-                        <StackPanel>
-                            <TextBlock Text="💾 PORTABLE BACKUP &amp; RESTORE" FontSize="13" FontWeight="Black" Foreground="#10B981"/>
-                            <TextBlock Text="All volume balances, EQ presets, channel mappings, and priority rules are stored in a human-readable config.json file."
-                                       FontSize="11" Foreground="#94A3B8" Margin="0,3,0,0"/>
-                        </StackPanel>
-                    </Grid>
-
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button Command="{Binding ExportSettingsCommand}" Padding="14,8" Background="#065F46" BorderBrush="#059669"
-                                Foreground="#ECFDF5" FontWeight="Bold" Margin="0,0,12,0">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="📤 Export Settings (JSON)" FontSize="11"/>
-                            </StackPanel>
-                        </Button>
-
-                        <Button Command="{Binding ImportSettingsCommand}" Padding="14,8" Background="#1E222B" BorderBrush="#334155"
-                                Foreground="#F8FAFC" FontWeight="SemiBold">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="📥 Import Settings (JSON)" FontSize="11"/>
-                            </StackPanel>
-                        </Button>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
-
-            <!-- 5. Windows Startup & System Integration -->
-            <Border Background="#181A20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                        <TextBlock Text="🚀 WINDOWS STARTUP &amp; SYSTEM INTEGRATION" FontSize="13" FontWeight="Black" Foreground="#00E5FF"/>
-                        <TextBlock Text="Launch NovaSonics silently in the background when Windows boots, residing in the system notification tray."
-                                   FontSize="11" Foreground="#94A3B8" Margin="0,3,0,0"/>
-                    </StackPanel>
-
-                    <Border Grid.Column="1" Background="#14161C" CornerRadius="6" Padding="14,10" BorderBrush="#252A36" BorderThickness="1" VerticalAlignment="Center">
-                        <CheckBox Style="{StaticResource SonarToggleSwitch}" IsChecked="{Binding StartMinimizedToTray, Mode=TwoWay}">
-                            <StackPanel Margin="6,0,0,0">
-                                <TextBlock Text="Start Minimized to System Tray" FontWeight="SemiBold" FontSize="11" Foreground="#E2E8F0"/>
-                                <TextBlock Text="Run on Windows startup" FontSize="9" Foreground="#64748B"/>
-                            </StackPanel>
-                        </CheckBox>
-                    </Border>
-                </Grid>
-            </Border>
-
-            <!-- 6. About & Version -->
-            <Border Background="#181A20" CornerRadius="8" Padding="18" Margin="0,0,0,16" BorderBrush="#262A34" BorderThickness="1">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="NOVASONICS" FontSize="13" FontWeight="Black" Foreground="#00E5FF"/>
-                            <Border Background="#1E293B" CornerRadius="4" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding AppVersion}" FontSize="10" FontWeight="Bold" Foreground="#38BDF8"/>
-                            </Border>
-                        </StackPanel>
-                        <TextBlock Text="Lightweight native Windows audio mixer and hardware controller for SteelSeries Arctis Nova 7."
-                                   FontSize="11" Foreground="#94A3B8" Margin="0,4,0,0"/>
-                    </StackPanel>
-                </Grid>
             </Border>
 
         </StackPanel>

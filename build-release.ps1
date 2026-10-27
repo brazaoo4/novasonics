@@ -11,7 +11,8 @@
 [CmdletBinding()]
 param(
     [string]$Configuration = "Release",
-    [string]$Runtime = "win-x64"
+    [string]$Runtime = "win-x64",
+    [switch]$SkipLocalUpdate
 )
 
 $ErrorActionPreference = "Stop"
@@ -60,12 +61,14 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 
 Write-Host "[1/4] Target Version: v$version ($Configuration, $Runtime)" -ForegroundColor Green
 
-# 3. Terminate running instances before publish
-Get-Process -Name NovaSonics -ErrorAction SilentlyContinue | ForEach-Object {
-    Write-Host "Terminating running NovaSonics process (PID: $($_.Id))..." -ForegroundColor Yellow
-    Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+# 3. Terminate running instances before publish (unless skipping local update)
+if (-not $SkipLocalUpdate) {
+    Get-Process -Name NovaSonics -ErrorAction SilentlyContinue | ForEach-Object {
+        Write-Host "Terminating running NovaSonics process (PID: $($_.Id))..." -ForegroundColor Yellow
+        Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Milliseconds 300
 }
-Start-Sleep -Milliseconds 300
 
 # 4. Clean & Prepare Directories
 $publishDir = Join-Path $ScriptRoot "publish\win-x64"
@@ -191,35 +194,39 @@ if (Test-Path $setupPath) {
 }
 
 # 9. Local Installation Sync
-Write-Host "`n[5/5] Updating local installed version..." -ForegroundColor Green
-$targetDirs = @(
-    "C:\Program Files\NovaSonics",
-    "$env:LOCALAPPDATA\Programs\NovaSonics"
-)
+if ($SkipLocalUpdate) {
+    Write-Host "`n[5/5] Skipping local installation update (-SkipLocalUpdate is set)." -ForegroundColor Yellow
+} else {
+    Write-Host "`n[5/5] Updating local installed version..." -ForegroundColor Green
+    $targetDirs = @(
+        "C:\Program Files\NovaSonics",
+        "$env:LOCALAPPDATA\Programs\NovaSonics"
+    )
 
-$localUpdated = $false
-foreach ($targetDir in $targetDirs) {
-    if (Test-Path $targetDir) {
-        try {
-            Write-Host "  Attempting direct update to: $targetDir" -ForegroundColor Cyan
-            Copy-Item -Path "$publishDir\*" -Destination $targetDir -Recurse -Force -ErrorAction Stop
-            Write-Host "  -> Successfully updated local binaries in: $targetDir" -ForegroundColor Green
-            $localUpdated = $true
-        } catch {
-            Write-Warning "  Direct update to $targetDir requires administrator elevation."
+    $localUpdated = $false
+    foreach ($targetDir in $targetDirs) {
+        if (Test-Path $targetDir) {
+            try {
+                Write-Host "  Attempting direct update to: $targetDir" -ForegroundColor Cyan
+                Copy-Item -Path "$publishDir\*" -Destination $targetDir -Recurse -Force -ErrorAction Stop
+                Write-Host "  -> Successfully updated local binaries in: $targetDir" -ForegroundColor Green
+                $localUpdated = $true
+            } catch {
+                Write-Warning "  Direct update to $targetDir requires administrator elevation."
+            }
         }
     }
-}
 
-if ($localUpdated) {
-    $installedExe = "C:\Program Files\NovaSonics\NovaSonics.exe"
-    if (Test-Path $installedExe) {
-        Write-Host "  Starting updated NovaSonics..." -ForegroundColor Cyan
-        Start-Process -FilePath $installedExe -WorkingDirectory (Split-Path $installedExe -Parent)
+    if ($localUpdated) {
+        $installedExe = "C:\Program Files\NovaSonics\NovaSonics.exe"
+        if (Test-Path $installedExe) {
+            Write-Host "  Starting updated NovaSonics..." -ForegroundColor Cyan
+            Start-Process -FilePath $installedExe -WorkingDirectory (Split-Path $installedExe -Parent)
+        }
+    } else {
+        Write-Host "  Launching setup installer to apply updates locally..." -ForegroundColor Cyan
+        cmd.exe /c start "" $setupPath
     }
-} else {
-    Write-Host "  Launching setup installer to apply updates locally..." -ForegroundColor Cyan
-    cmd.exe /c start "" $setupPath
 }
 
 Write-Host "`n=====================================================" -ForegroundColor Green
