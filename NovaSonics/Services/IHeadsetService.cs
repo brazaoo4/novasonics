@@ -23,5 +23,6 @@ namespace NovaSonics.Services
         Task SetVolumeLimiterAsync(bool enabled);
         Task SetEqualizerBandsAsync(float[] bands);
         Task CommitToFlashAsync();
+        Task ResetMicrophoneDspAndGainAsync();
     }
 }

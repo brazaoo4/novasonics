@@ -69,7 +69,10 @@ namespace NovaSonics.Models
             SidetoneLevel = System.Math.Clamp(SidetoneLevel, 0, 3);
             InactiveTimerMinutes = System.Math.Clamp(InactiveTimerMinutes, 0, 255);
             MicMuteBrightness = System.Math.Clamp(MicMuteBrightness, 0, 3);
-            HardwareMicVolume = System.Math.Clamp(HardwareMicVolume, 0, 7);
+            if (HardwareMicVolume <= 0 || HardwareMicVolume > 7)
+            {
+                HardwareMicVolume = 7;
+            }
 
             if (EqualizerBands == null || EqualizerBands.Length != 10)
             {

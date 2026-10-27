@@ -49,29 +49,11 @@ namespace NovaSonics
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-        [DllImport("psapi.dll")]
-        private static extern bool EmptyWorkingSet(IntPtr hProcess);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool SetProcessWorkingSetSizeEx(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize, uint Flags);
-
-        public static void TrimMemory() => TrimMemory(true);
-
-        public static void TrimMemory(bool fullGc)
+        public static void TrimMemory()
         {
             try
             {
-                if (fullGc)
-                {
-                    GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-                    GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
-                    GC.WaitForPendingFinalizers();
-                    GC.Collect(2, GCCollectionMode.Forced, blocking: false, compacting: false);
-                }
-                using var proc = Process.GetCurrentProcess();
-                IntPtr handle = proc.Handle;
-                SetProcessWorkingSetSizeEx(handle, new IntPtr(-1), new IntPtr(-1), 0);
-                EmptyWorkingSet(handle);
+                GC.Collect(1, GCCollectionMode.Optimized, blocking: false);
             }
             catch { }
         }
@@ -100,19 +82,6 @@ namespace NovaSonics
 
             IsVisibleChanged += (s, e) => UpdateUiActiveState();
             StateChanged += (s, e) => UpdateUiActiveState();
-
-            Task.Run(async () =>
-            {
-                await Task.Delay(1500).ConfigureAwait(false);
-                TrimMemory(fullGc: true);
-                await Task.Delay(2000).ConfigureAwait(false);
-                TrimMemory(fullGc: true);
-                while (!_isExplicitExit)
-                {
-                    await Task.Delay(30000).ConfigureAwait(false);
-                    TrimMemory(fullGc: false);
-                }
-            });
         }
 
         private void MainWindow_SourceInitialized(object? sender, EventArgs e)

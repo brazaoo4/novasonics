@@ -41,6 +41,7 @@ namespace NovaSonics.Services
         private readonly object _flashTimerLock = new();
         private System.Threading.Timer? _flashCommitDebounceTimer;
         private float _previousBalance = float.NaN;
+        private bool? _lastNotifiedOnline;
 
         public HeadsetStatusModel Status { get; } = new();
 
@@ -161,14 +162,26 @@ namespace NovaSonics.Services
                 try { _syncStream?.Dispose(); } catch { }
                 _commandStream = null;
                 _syncStream = null;
+                _lastNotifiedOnline = null;
             }
+        }
+
+        private void NotifyPowerState(bool isOnline)
+        {
+            lock (_ioLock)
+            {
+                if (_lastNotifiedOnline == isOnline) return;
+                _lastNotifiedOnline = isOnline;
+                Status.IsHeadsetOnline = isOnline;
+            }
+            PowerStateChanged?.Invoke(this, isOnline);
         }
 
         private bool EnsureConnected()
         {
             lock (_ioLock)
             {
-                if (_commandStream != null) return true;
+                if (_commandStream != null && _syncStream != null) return true;
 
                 try
                 {
@@ -182,50 +195,54 @@ namespace NovaSonics.Services
                         return false;
                     }
 
-                    // 1. Locate Command Interface (UsagePage 0xFFC0, MI_03 / Col01, 65-byte report)
-                    var cmdDev = devices.FirstOrDefault(d =>
-                        d.GetMaxInputReportLength() == 65 &&
-                        d.GetMaxOutputReportLength() == 65 &&
-                        (d.DevicePath.Contains("&mi_03", StringComparison.OrdinalIgnoreCase) ||
-                         d.DevicePath.Contains("col01", StringComparison.OrdinalIgnoreCase) ||
-                         GetUsagePageSafe(d) == 0xFFC0));
-
-                    cmdDev ??= devices.FirstOrDefault(d =>
-                        d.GetMaxInputReportLength() == 65 &&
-                        d.GetMaxOutputReportLength() == 65 &&
-                        GetUsagePageSafe(d) == 0xFFC0);
-
-                    if (cmdDev != null && cmdDev.TryOpen(out _commandStream))
+                    HidDevice? cmdDev = null;
+                    if (_commandStream == null)
                     {
-                        _activePid = cmdDev.ProductID;
-                        _commandStream.ReadTimeout = 500;
-                        _commandStream.WriteTimeout = 500;
-                        Status.IsDeviceConnected = true;
-                        Status.DeviceModelName = _activePid switch
+                        // 1. Locate Command Interface (UsagePage 0xFFC0, MI_03 / Col01, 65-byte report)
+                        cmdDev = devices.FirstOrDefault(d =>
+                            d.GetMaxInputReportLength() == 65 &&
+                            d.GetMaxOutputReportLength() == 65 &&
+                            (GetUsagePageSafe(d) == 0xFFC0 ||
+                             (d.DevicePath.Contains("&mi_03", StringComparison.OrdinalIgnoreCase) &&
+                              !d.DevicePath.Contains("&mi_05", StringComparison.OrdinalIgnoreCase) &&
+                              !d.DevicePath.Contains("col02", StringComparison.OrdinalIgnoreCase))));
+
+                        cmdDev ??= devices.FirstOrDefault(d =>
+                            d.GetMaxInputReportLength() == 65 &&
+                            d.GetMaxOutputReportLength() == 65 &&
+                            GetUsagePageSafe(d) == 0xFFC0);
+
+                        if (cmdDev != null && cmdDev.TryOpen(out _commandStream))
                         {
-                            0x22A1 or 0x227E or 0x2202 => "Nova 7",
-                            0x2206 or 0x229E or 0x22A5 => "Nova 7X",
-                            0x220A or 0x2298 or 0x22A7 => "Nova 7P",
-                            0x223A => "Nova 7 D4",
-                            0x2258 => "Nova 7 White",
-                            0x227A => "Nova 7 Dota2",
-                            0x12e0 or 0x12e2 or 0x12e4 or 0x12e6 => "Nova Pro",
-                            0x2234 or 0x2238 => "Nova 5",
-                            _ => "Arctis Nova"
-                        };
+                            _activePid = cmdDev.ProductID;
+                            _commandStream.ReadTimeout = 500;
+                            _commandStream.WriteTimeout = 500;
+                            Status.IsDeviceConnected = true;
+                            Status.DeviceModelName = _activePid switch
+                            {
+                                0x22A1 or 0x227E or 0x2202 => "Nova 7",
+                                0x2206 or 0x229E or 0x22A5 => "Nova 7X",
+                                0x220A or 0x2298 or 0x22A7 => "Nova 7P",
+                                0x223A => "Nova 7 D4",
+                                0x2258 => "Nova 7 White",
+                                0x227A => "Nova 7 Dota2",
+                                0x12e0 or 0x12e2 or 0x12e4 or 0x12e6 => "Nova Pro",
+                                0x2234 or 0x2238 => "Nova 5",
+                                _ => "Arctis Nova"
+                            };
+                        }
                     }
 
-                    // 2. Locate Sync Interrupt Interface (UsagePage 0xFF00, MI_05 / Col02)
-                    var syncDev = devices.FirstOrDefault(d =>
-                        d != cmdDev &&
-                        (d.DevicePath.Contains("&mi_05", StringComparison.OrdinalIgnoreCase) ||
-                         d.DevicePath.Contains("col02", StringComparison.OrdinalIgnoreCase) ||
-                         GetUsagePageSafe(d) == 0xFF00));
-
-                    if (syncDev != null)
+                    if (_syncStream == null)
                     {
-                        syncDev.TryOpen(out _syncStream);
-                        if (_syncStream != null)
+                        // 2. Locate Sync Interrupt Interface (UsagePage 0xFF00, MI_05 / Col02)
+                        var syncDev = devices.FirstOrDefault(d =>
+                            d != cmdDev &&
+                            (GetUsagePageSafe(d) == 0xFF00 ||
+                             d.DevicePath.Contains("&mi_05", StringComparison.OrdinalIgnoreCase) ||
+                             d.DevicePath.Contains("col02", StringComparison.OrdinalIgnoreCase)));
+
+                        if (syncDev != null && syncDev.TryOpen(out _syncStream))
                         {
                             _syncStream.ReadTimeout = 1000;
                         }
@@ -259,9 +276,6 @@ namespace NovaSonics.Services
 
         private void PollingLoop(CancellationToken token)
         {
-            bool? previousOnline = null;
-            DateTime lastSettingsPollTime = DateTime.MinValue;
-
             while (!token.IsCancellationRequested)
             {
                 if (_isSuspended)
@@ -274,11 +288,9 @@ namespace NovaSonics.Services
                 {
                     if (!EnsureConnected())
                     {
-                        if (previousOnline != false)
+                        if (_lastNotifiedOnline != false)
                         {
-                            previousOnline = false;
-                            Status.IsHeadsetOnline = false;
-                            PowerStateChanged?.Invoke(this, false);
+                            NotifyPowerState(false);
                         }
                         StatusUpdated?.Invoke(this, Status);
                         Thread.Sleep(2000);
@@ -333,20 +345,13 @@ namespace NovaSonics.Services
                             ChatMixChanged?.Invoke(this, balance);
                         }
 
-                        if (previousOnline == null || isOnline != previousOnline.Value)
+                        if (_lastNotifiedOnline != isOnline)
                         {
-                            previousOnline = isOnline;
+                            NotifyPowerState(isOnline);
                             if (isOnline)
                             {
-                                ReadHardwareSettingsFromDevice();
-                                lastSettingsPollTime = DateTime.UtcNow;
+                                Task.Delay(300).ContinueWith(_ => ReadHardwareSettingsFromDevice());
                             }
-                            PowerStateChanged?.Invoke(this, isOnline);
-                        }
-                        else if (isOnline && (DateTime.UtcNow - lastSettingsPollTime).TotalMilliseconds >= 5000)
-                        {
-                            ReadHardwareSettingsFromDevice();
-                            lastSettingsPollTime = DateTime.UtcNow;
                         }
 
                         StatusUpdated?.Invoke(this, Status);
@@ -356,19 +361,17 @@ namespace NovaSonics.Services
                 {
                     CloseStreams();
                     Status.IsDeviceConnected = false;
-                    if (previousOnline != false)
+                    if (_lastNotifiedOnline != false)
                     {
-                        previousOnline = false;
-                        Status.IsHeadsetOnline = false;
-                        PowerStateChanged?.Invoke(this, false);
+                        NotifyPowerState(false);
                     }
                     StatusUpdated?.Invoke(this, Status);
                 }
 
                 // Adaptive polling: real-time dial turns (0x45), battery (0xB7), and power (0xB9)
                 // arrive instantly via _syncStream interrupt. Poll 0xB0 every 1000ms when online
-                // and back off to 2000ms when offline to save host CPU and HID bus traffic.
-                Thread.Sleep(Status.IsHeadsetOnline ? 1000 : 2000);
+                // and 750ms when offline for fast power-on detection without host CPU overhead.
+                Thread.Sleep(Status.IsHeadsetOnline ? 1000 : 750);
             }
         }
 
@@ -376,13 +379,20 @@ namespace NovaSonics.Services
         {
             try
             {
+                if (!Status.IsHeadsetOnline) return;
+
                 // 0x20 audio_settings: [0x00, 0x20, mic_volume (0-7), sidetone (0-3), volume_limiter (0-1)]
                 byte[]? audioResp = SendAndReceiveCommand(0x20);
                 if (audioResp != null && audioResp.Length >= 5 && audioResp[1] == 0x20)
                 {
-                    if (audioResp[2] <= 7) Status.MicVolumeLevel = audioResp[2];
-                    if (audioResp[3] <= 3) Status.SidetoneLevel = audioResp[3];
-                    if (audioResp[4] <= 1) Status.VolumeLimiterEnabled = audioResp[4] == 1;
+                    // Guard against all-zero waking/uninitialized response (prevents overwriting mic gain to 0)
+                    bool isAllZero = audioResp[2] == 0 && audioResp[3] == 0 && audioResp[4] == 0;
+                    if (!isAllZero)
+                    {
+                        if (audioResp[2] <= 7) Status.MicVolumeLevel = audioResp[2];
+                        if (audioResp[3] <= 3) Status.SidetoneLevel = audioResp[3];
+                        if (audioResp[4] <= 1) Status.VolumeLimiterEnabled = audioResp[4] == 1;
+                    }
                 }
 
                 // 0xA0 ux_settings: [0x00, 0xA0, inactivity_timer (0-255), muted_mic_brightness (0-3)]
@@ -458,10 +468,13 @@ namespace NovaSonics.Services
                         else if (cmd == 0xB9) // Connection event: [ReportID, 0xB9, ConnState (3 = PAIRED_CONNECTED)]
                         {
                             bool isOnline = (buffer[2] == 0x03);
-                            if (isOnline != Status.IsHeadsetOnline)
+                            if (_lastNotifiedOnline != isOnline)
                             {
-                                Status.IsHeadsetOnline = isOnline;
-                                PowerStateChanged?.Invoke(this, isOnline);
+                                NotifyPowerState(isOnline);
+                                if (isOnline)
+                                {
+                                    Task.Delay(300).ContinueWith(_ => ReadHardwareSettingsFromDevice());
+                                }
                                 StatusUpdated?.Invoke(this, Status);
                             }
                         }
@@ -489,19 +502,60 @@ namespace NovaSonics.Services
             {
                 if (_commandStream == null) return null;
 
-                byte[] packet = new byte[65];
-                packet[0] = 0x00; // Report ID 0
-                packet[1] = commandId;
-                for (int i = 0; i < args.Length && (i + 2) < 65; i++)
+                try
                 {
-                    packet[i + 2] = args[i];
+                    // Drain any stale unread input reports from ring buffer
+                    int oldTimeout = _commandStream.ReadTimeout;
+                    _commandStream.ReadTimeout = 10;
+                    byte[] drainBuf = new byte[65];
+                    while (true)
+                    {
+                        try
+                        {
+                            int drained = _commandStream.Read(drainBuf, 0, drainBuf.Length);
+                            if (drained <= 0) break;
+                        }
+                        catch (TimeoutException)
+                        {
+                            break;
+                        }
+                        catch
+                        {
+                            break;
+                        }
+                    }
+                    _commandStream.ReadTimeout = oldTimeout;
+
+                    byte[] packet = new byte[65];
+                    packet[0] = 0x00; // Report ID 0
+                    packet[1] = commandId;
+                    for (int i = 0; i < args.Length && (i + 2) < 65; i++)
+                    {
+                        packet[i + 2] = args[i];
+                    }
+
+                    _commandStream.Write(packet, 0, packet.Length);
+
+                    byte[] response = new byte[65];
+                    int bytesRead = _commandStream.Read(response, 0, response.Length);
+                    if (bytesRead > 0)
+                    {
+                        // If response opcode doesn't match commandId, try one more read in case an ack was in flight
+                        if (response.Length >= 2 && response[1] != commandId)
+                        {
+                            byte[] secondResp = new byte[65];
+                            int secondRead = _commandStream.Read(secondResp, 0, secondResp.Length);
+                            if (secondRead > 0 && secondResp[1] == commandId)
+                                return secondResp;
+                        }
+                        return response;
+                    }
+                    return null;
                 }
-
-                _commandStream.Write(packet, 0, packet.Length);
-
-                byte[] response = new byte[65];
-                int bytesRead = _commandStream.Read(response, 0, response.Length);
-                return bytesRead > 0 ? response : null;
+                catch
+                {
+                    return null;
+                }
             }
         }
 
@@ -634,17 +688,135 @@ namespace NovaSonics.Services
 
             return Task.Run(() =>
             {
-                // SteelSeries Arctis Nova 7 hardware 10-band Graphic EQ:
-                // 10 bands: 31Hz, 62Hz, 125Hz, 250Hz, 500Hz, 1kHz, 2kHz, 4kHz, 8kHz, 16kHz
-                // Scale: -10 dB to +10 dB mapped to 0..40 (0x00..0x28), with 0 dB = 20 (0x14)
-                byte[] args = new byte[10];
-                for (int i = 0; i < 10; i++)
+                lock (_ioLock)
                 {
-                    float clamped = Math.Clamp(bands[i], -10.0f, 10.0f);
-                    args[i] = (byte)Math.Clamp((int)Math.Round(2 * (10.0f + clamped)), 0, 40);
+                    if (_commandStream == null || !Status.IsHeadsetOnline) return;
+
+                    if (LegacyBatteryScalePids.Contains(_activePid))
+                    {
+                        // SteelSeries Arctis Nova 7 Gen 1 (0x2202, 0x2206, 0x220A): 10-byte Graphic EQ
+                        // Scale: -10 dB to +10 dB mapped to 0..40 (0x00..0x28), with 0 dB = 20 (0x14)
+                        byte[] args = new byte[10];
+                        for (int i = 0; i < 10; i++)
+                        {
+                            float clamped = Math.Clamp(bands[i], -10.0f, 10.0f);
+                            args[i] = (byte)Math.Clamp((int)Math.Round(2 * (10.0f + clamped)), 0, 40);
+                        }
+                        SendWriteRegister(0x33, args);
+                        QueueFlashCommit();
+                        return;
+                    }
+
+                    // SteelSeries Arctis Nova 7 Gen 2 / Upgrade (0x22A1, 0x227E, etc.):
+                    // 4-packet Parametric EQ sequence defined in base_arctis_nova_7_gen2_tx.edevice:
+                    // Packet 1: 0xA7 Custom preset name
+                    byte[] namePkt = new byte[65];
+                    namePkt[0] = 0x00;
+                    namePkt[1] = 0xA7;
+                    namePkt[2] = 0x00; // 0x00 = 2.4G RF connection
+                    namePkt[3] = 0x01; // 0x01 = Custom preset
+                    byte[] nameBytes = System.Text.Encoding.ASCII.GetBytes("Custom\0");
+                    Array.Copy(nameBytes, 0, namePkt, 4, Math.Min(nameBytes.Length, 61));
+                    _commandStream.Write(namePkt, 0, namePkt.Length);
+                    Thread.Sleep(30);
+
+                    // Packet 2: 0x33 PEQ 10 bands (60 bytes payload)
+                    // Format per band: uint16 freq LE, uint8 filter_type, int8 gain (dB * 10), uint16 q_factor LE (1.414 * 1000 = 1414)
+                    byte[] bandPkt = new byte[65];
+                    bandPkt[0] = 0x00;
+                    bandPkt[1] = 0x33;
+                    bandPkt[2] = 0x00; // 0x00 = 2.4G RF connection
+
+                    ushort[] freqs = { 32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
+                    for (int i = 0; i < 10; i++)
+                    {
+                        int offset = 3 + (i * 6);
+                        ushort f = freqs[i];
+                        byte filterType = 1; // Peaking EQ
+                        float clampedDb = Math.Clamp(bands[i], -12.0f, 12.0f);
+                        sbyte gainByte = (sbyte)Math.Clamp((int)Math.Round(clampedDb * 10f), -120, 120);
+                        ushort qFactor = 1414; // 1.414 * 1000
+
+                        bandPkt[offset] = (byte)(f & 0xFF);
+                        bandPkt[offset + 1] = (byte)((f >> 8) & 0xFF);
+                        bandPkt[offset + 2] = filterType;
+                        bandPkt[offset + 3] = (byte)gainByte;
+                        bandPkt[offset + 4] = (byte)(qFactor & 0xFF);
+                        bandPkt[offset + 5] = (byte)((qFactor >> 8) & 0xFF);
+                    }
+                    _commandStream.Write(bandPkt, 0, bandPkt.Length);
+                    Thread.Sleep(30);
+
+                    // Packet 3: 0x27 update_complete trigger (DSP reconfiguration)
+                    byte[] updatePkt = new byte[65];
+                    updatePkt[0] = 0x00;
+                    updatePkt[1] = 0x27;
+                    _commandStream.Write(updatePkt, 0, updatePkt.Length);
+                    Thread.Sleep(30);
+
+                    // Queue flash commit (0x09)
+                    QueueFlashCommit();
                 }
-                SendWriteRegister(0x33, args);
-                QueueFlashCommit();
+            });
+        }
+
+        public Task ResetMicrophoneDspAndGainAsync()
+        {
+            return Task.Run(() =>
+            {
+                lock (_ioLock)
+                {
+                    if (_commandStream == null || !Status.IsHeadsetOnline) return;
+
+                    try
+                    {
+                        if (!LegacyBatteryScalePids.Contains(_activePid))
+                        {
+                            // Reset Gen 2 Mic PEQ (connection_type = 0x02) to flat defaults from base_arctis_nova_7_gen2_tx.edevice
+                            byte[] namePkt = new byte[65];
+                            namePkt[0] = 0x00;
+                            namePkt[1] = 0xA7;
+                            namePkt[2] = 0x02; // 0x02 = Mic PEQ
+                            namePkt[3] = 0x00; // 0x00 = Preset Flat
+                            byte[] nameBytes = System.Text.Encoding.ASCII.GetBytes("Flat\0");
+                            Array.Copy(nameBytes, 0, namePkt, 4, Math.Min(nameBytes.Length, 61));
+                            _commandStream.Write(namePkt, 0, namePkt.Length);
+                            Thread.Sleep(30);
+
+                            byte[] bandPkt = new byte[65];
+                            bandPkt[0] = 0x00;
+                            bandPkt[1] = 0x33;
+                            bandPkt[2] = 0x02; // 0x02 = Mic PEQ
+
+                            ushort[] micFreqs = { 31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
+                            byte[] filterTypes = { 4, 1, 1, 1, 1, 1, 1, 1, 1, 5 }; // Low Shelf (4), Peaking (1), High Shelf (5)
+                            for (int i = 0; i < 10; i++)
+                            {
+                                int offset = 3 + (i * 6);
+                                bandPkt[offset] = (byte)(micFreqs[i] & 0xFF);
+                                bandPkt[offset + 1] = (byte)((micFreqs[i] >> 8) & 0xFF);
+                                bandPkt[offset + 2] = filterTypes[i];
+                                bandPkt[offset + 3] = 0x00; // 0.0 dB gain
+                                bandPkt[offset + 4] = (byte)(1414 & 0xFF);
+                                bandPkt[offset + 5] = (byte)((1414 >> 8) & 0xFF);
+                            }
+                            _commandStream.Write(bandPkt, 0, bandPkt.Length);
+                            Thread.Sleep(30);
+
+                            byte[] updatePkt = new byte[65];
+                            updatePkt[0] = 0x00;
+                            updatePkt[1] = 0x27;
+                            _commandStream.Write(updatePkt, 0, updatePkt.Length);
+                            Thread.Sleep(30);
+                        }
+
+                        // Restore Hardware Mic Gain to 7 (100% hardware mic volume)
+                        SendWriteRegister(0x37, 0x07);
+                        Status.MicVolumeLevel = 7;
+                        QueueFlashCommit();
+                    }
+                    catch { }
+                }
             });
         }
 

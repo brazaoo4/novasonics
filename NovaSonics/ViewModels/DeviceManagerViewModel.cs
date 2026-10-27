@@ -267,13 +267,13 @@ namespace NovaSonics.ViewModels
         [RelayCommand]
         public void SwitchNextDevice()
         {
-            _deviceService.SwitchNextDevice();
+            Task.Run(() => _deviceService.SwitchNextDevice());
         }
 
         [RelayCommand]
         public void SwitchPreviousDevice()
         {
-            _deviceService.SwitchPreviousDevice();
+            Task.Run(() => _deviceService.SwitchPreviousDevice());
         }
 
         private void SavePriorityList()

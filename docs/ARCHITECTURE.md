@@ -153,7 +153,7 @@ Routes individual mixer channels (`Game`, `Media`, `Chat`, `Mic`) to specific ph
 Provides fully autonomous, one-click in-place application updates for both Installed (`Inno Setup`) and Portable (`ZIP`) installations directly from the Settings tab:
 * **Installation Mode Detection**:
   * Detects presence of `unins000.exe` in `AppContext.BaseDirectory` to identify `IsInstalledVersion`.
-  * Exposes `CurrentVersionDisplay` (e.g. `v1.0.3 (Installed)` or `v1.0.3 (Portable)`).
+  * Exposes `CurrentVersionDisplay` (e.g. `v1.1.0 (Installed)` or `v1.1.0 (Portable)`).
 * **GitHub Releases API Query**:
   * Queries `https://api.github.com/repos/brazaoo4/novasonics/releases/latest` with a 10s timeout and `User-Agent: NovaSonics-Updater`.
   * Dynamically selects the proper release asset: `*Setup*.exe` for Installed builds or `*Portable*.zip` for Portable builds.
@@ -228,8 +228,8 @@ The Arctis Nova 7 wireless transceiver features a 10-band hardware digital-to-an
 | `0xB0` | R/W Query | Read Status, Battery & ChatMix | **Req**: `[0x00, 0xB0]`<br>**Resp**: `[2]` = ConnState (`0..2` Offline, `3` Online), `[3]` = Battery (`1..100` or `0..4`), `[4]` = Charging (`1` = Charging), `[5]` = Game Atten (`0..100`), `[6]` = Chat Atten (`0..100`) |
 | `0x20` | R/W Query | Read Audio Hardware Registers | **Req**: `[0x00, 0x20]`<br>**Resp**: `[2]` = Mic Gain (`0..7`), `[3]` = Sidetone (`0` Off, `1` Low, `2` Med, `3` High), `[4]` = Volume Limiter (`0` Off, `1` On) |
 | `0xA0` | R/W Query | Read UX Hardware Registers | **Req**: `[0x00, 0xA0]`<br>**Resp**: `[2]` = Sleep Timer Minutes (`0..255`), `[3]` = Mic Mute LED Brightness (`0` Off, `1` Low, `2` Med, `3` High) |
-| `0x33` | Write | Write 10-Band Hardware DAC EQ | **Req**: `[0x00, 0x33, b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, 0x00]`<br>10 bands. Each band encoded as `round(2 * (10.0 + dB))` $\in [0..40]$. |
-| `0x37` | Write | Set Hardware Mic Gain | **Req**: `[0x00, 0x37, level]` (`level` $\in [0..7]$) |
+| `0x33` | Write | Write Hardware DAC Equalizer | • **Gen 1 (`0x2202`)**: `[0x00, 0x33, b0..b9, 0x00]` (10 graphic bands, `round(2 * (10.0 + dB))` $\in [0..40]$).<br>• **Gen 2 / Upgrade (`0x22A1`, `0x227E`)**: 4-packet Parametric EQ sequence: (1) `0xA7` Name (`connection_type = 0x00` 2.4G, `0x01` BT, `0x02` Mic), (2) `0x33` PEQ (10 bands of `uint16 freq LE, uint8 filter_type 1, int8 gain*10, uint16 q_factor 1414 LE`), (3) `0x27` Update Complete, (4) `0x09` Flash Commit. |
+| `0x37` | Write | Set Hardware Mic Gain | **Req**: `[0x00, 0x37, level]` (`level` $\in [0..7]$, default `7` = 100% hardware mic gain; `0` = silent preamp) |
 | `0x39` | Write | Set Hardware Sidetone | **Req**: `[0x00, 0x39, level]` (`level` $\in [0..3]$) |
 | `0x3A` | Write | Set EU Volume Limiter | **Req**: `[0x00, 0x3A, enabled]` (`0x00` or `0x01`) |
 | `0xA3` | Write | Set Auto-Shutoff Timer | **Req**: `[0x00, 0xA3, minutes]` (`minutes` $\in [0..255]$) |

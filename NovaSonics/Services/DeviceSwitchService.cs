@@ -18,6 +18,7 @@ namespace NovaSonics.Services
         private bool _lastKnownHeadsetOnline;
         private readonly System.Threading.Timer _topologyDebounceTimer;
         private readonly object _topologyLock = new();
+        private readonly object _refreshLock = new();
         private volatile bool _isSystemSuspended;
         private volatile bool _isSwitchingEndpoint;
         private readonly HashSet<string> _knownOnlineDeviceIds = new(StringComparer.OrdinalIgnoreCase);
@@ -74,23 +75,25 @@ namespace NovaSonics.Services
 
         public List<AudioDeviceModel> RefreshDevices()
         {
-            try
+            lock (_refreshLock)
             {
-                string defaultId = string.Empty;
-                if (!string.IsNullOrEmpty(_pendingDefaultDeviceId) && DateTime.UtcNow < _pendingDefaultDeviceExpiry)
+                try
                 {
-                    defaultId = _pendingDefaultDeviceId;
-                }
-                else
-                {
-                    _pendingDefaultDeviceId = null;
-                    try
+                    string defaultId = string.Empty;
+                    if (!string.IsNullOrEmpty(_pendingDefaultDeviceId) && DateTime.UtcNow < _pendingDefaultDeviceExpiry)
                     {
-                        using var def = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-                        defaultId = def?.ID ?? string.Empty;
+                        defaultId = _pendingDefaultDeviceId;
                     }
-                    catch { }
-                }
+                    else
+                    {
+                        _pendingDefaultDeviceId = null;
+                        try
+                        {
+                            using var def = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                            defaultId = def?.ID ?? string.Empty;
+                        }
+                        catch { }
+                    }
 
                 // Enumerate ALL render states (Active, Unplugged, NotPresent, Disabled) so disconnected devices persist
                 var endpoints = _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.All);
@@ -249,8 +252,20 @@ namespace NovaSonics.Services
                 string defaultCapId = string.Empty;
                 try
                 {
-                    using var defCap = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
-                    defaultCapId = defCap?.ID ?? string.Empty;
+                    MMDevice? defCap = null;
+                    try { defCap = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia); } catch { }
+                    if (defCap == null)
+                    {
+                        try { defCap = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console); } catch { }
+                    }
+                    if (defCap == null)
+                    {
+                        try { defCap = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications); } catch { }
+                    }
+                    using (defCap)
+                    {
+                        defaultCapId = defCap?.ID ?? string.Empty;
+                    }
                 }
                 catch { }
 
@@ -325,10 +340,11 @@ namespace NovaSonics.Services
                     DevicesRefreshed?.Invoke(this, EventArgs.Empty);
                 });
 
-                return sorted;
+                    return sorted;
+                }
+                catch { }
+                return new List<AudioDeviceModel>();
             }
-            catch { }
-            return new List<AudioDeviceModel>();
         }
 
         private static void SyncDeviceList(ObservableCollection<AudioDeviceModel> target, List<AudioDeviceModel> source)
@@ -680,23 +696,25 @@ namespace NovaSonics.Services
                     var captureEndpoints = _enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
                     foreach (var cap in captureEndpoints)
                     {
+                        string capId = cap.ID;
+                        string capName = cap.FriendlyName;
                         try
                         {
-                            if ((cap.FriendlyName.Contains("Nova", StringComparison.OrdinalIgnoreCase) ||
-                                 cap.FriendlyName.Contains("Arctis", StringComparison.OrdinalIgnoreCase)) &&
-                                !cap.FriendlyName.Contains("SteelSeries Sonar", StringComparison.OrdinalIgnoreCase))
+                            if ((capName.Contains("Nova", StringComparison.OrdinalIgnoreCase) ||
+                                 capName.Contains("Arctis", StringComparison.OrdinalIgnoreCase)) &&
+                                !capName.Contains("SteelSeries Sonar", StringComparison.OrdinalIgnoreCase))
                             {
-                                SetDefaultEndpointForAllRoles(cap.ID);
-                                _configService.Config.MicDeviceId = cap.ID;
+                                SetDefaultEndpointForAllRoles(capId);
+                                _configService.Config.MicDeviceId = capId;
                                 _configService.Save();
 
                                 RunOnUI(() =>
                                 {
                                     foreach (var d in CaptureDevices)
                                     {
-                                        d.IsDefault = string.Equals(d.Id, cap.ID, StringComparison.OrdinalIgnoreCase);
+                                        d.IsDefault = string.Equals(d.Id, capId, StringComparison.OrdinalIgnoreCase);
                                     }
-                                    CurrentDefaultCaptureDevice = CaptureDevices.FirstOrDefault(d => string.Equals(d.Id, cap.ID, StringComparison.OrdinalIgnoreCase));
+                                    CurrentDefaultCaptureDevice = CaptureDevices.FirstOrDefault(d => string.Equals(d.Id, capId, StringComparison.OrdinalIgnoreCase));
                                 });
                                 break;
                             }
@@ -713,23 +731,25 @@ namespace NovaSonics.Services
                     var captureEndpoints = _enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
                     foreach (var cap in captureEndpoints)
                     {
+                        string capId = cap.ID;
+                        string capName = cap.FriendlyName;
                         try
                         {
-                            if (!cap.FriendlyName.Contains("Nova", StringComparison.OrdinalIgnoreCase) &&
-                                !cap.FriendlyName.Contains("Arctis", StringComparison.OrdinalIgnoreCase) &&
-                                !cap.FriendlyName.Contains("SteelSeries Sonar", StringComparison.OrdinalIgnoreCase))
+                            if (!capName.Contains("Nova", StringComparison.OrdinalIgnoreCase) &&
+                                !capName.Contains("Arctis", StringComparison.OrdinalIgnoreCase) &&
+                                !capName.Contains("SteelSeries Sonar", StringComparison.OrdinalIgnoreCase))
                             {
-                                SetDefaultEndpointForAllRoles(cap.ID);
-                                _configService.Config.MicDeviceId = cap.ID;
+                                SetDefaultEndpointForAllRoles(capId);
+                                _configService.Config.MicDeviceId = capId;
                                 _configService.Save();
 
                                 RunOnUI(() =>
                                 {
                                     foreach (var d in CaptureDevices)
                                     {
-                                        d.IsDefault = string.Equals(d.Id, cap.ID, StringComparison.OrdinalIgnoreCase);
+                                        d.IsDefault = string.Equals(d.Id, capId, StringComparison.OrdinalIgnoreCase);
                                     }
-                                    CurrentDefaultCaptureDevice = CaptureDevices.FirstOrDefault(d => string.Equals(d.Id, cap.ID, StringComparison.OrdinalIgnoreCase));
+                                    CurrentDefaultCaptureDevice = CaptureDevices.FirstOrDefault(d => string.Equals(d.Id, capId, StringComparison.OrdinalIgnoreCase));
                                 });
                                 break;
                             }
@@ -912,17 +932,29 @@ namespace NovaSonics.Services
                     }
                     else
                     {
-                        // Check if a higher-priority online device is available
+                        // Check if a higher-priority online device newly came online
                         var topPriority = currentOnline
                             .OrderBy(d => d.PriorityOrder)
                             .FirstOrDefault();
 
+                        bool isNewlyConnected = topPriority != null && !_knownOnlineDeviceIds.Contains(topPriority.Id);
+
                         if (topPriority != null && CurrentDefaultDevice != null &&
                             topPriority.PriorityOrder < CurrentDefaultDevice.PriorityOrder &&
-                            topPriority.Id != CurrentDefaultDevice.Id)
+                            topPriority.Id != CurrentDefaultDevice.Id &&
+                            isNewlyConnected)
                         {
                             SwitchToDevice(topPriority.Id);
                             _notificationService?.ShowCustomToast("Device Connected", $"{topPriority.Name} is online. Switched to high-priority output.");
+                        }
+                    }
+
+                    // Check if capture device needs re-syncing
+                    if (CurrentDefaultCaptureDevice == null || !CurrentDefaultCaptureDevice.IsOnline)
+                    {
+                        if (CurrentDefaultDevice != null)
+                        {
+                            TrySyncCaptureDevice(CurrentDefaultDevice.Id);
                         }
                     }
 
@@ -941,19 +973,16 @@ namespace NovaSonics.Services
 
         public void OnDeviceStateChanged(string deviceId, DeviceState newState)
         {
-            if (_isSwitchingEndpoint) return;
             TriggerTopologyDebounce();
         }
 
         public void OnDeviceAdded(string pwstrDeviceId)
         {
-            if (_isSwitchingEndpoint) return;
             TriggerTopologyDebounce();
         }
 
         public void OnDeviceRemoved(string deviceId)
         {
-            if (_isSwitchingEndpoint) return;
             TriggerTopologyDebounce();
         }
 
@@ -1013,6 +1042,32 @@ namespace NovaSonics.Services
                         {
                             DefaultDeviceChanged?.Invoke(this, CurrentDefaultDevice);
                         }
+                        DevicesRefreshed?.Invoke(this, EventArgs.Empty);
+                    }
+                    catch { }
+                });
+            }
+            else if (flow == DataFlow.Capture && (role == Role.Multimedia || role == Role.Console || role == Role.Communications))
+            {
+                RunOnUI(() =>
+                {
+                    try
+                    {
+                        foreach (var d in CaptureDevices)
+                        {
+                            d.IsDefault = string.Equals(d.Id, defaultDeviceId, StringComparison.OrdinalIgnoreCase);
+                            if (d.IsDefault)
+                            {
+                                CurrentDefaultCaptureDevice = d;
+                            }
+                        }
+
+                        if (CurrentDefaultCaptureDevice != null)
+                        {
+                            _configService.Config.MicDeviceId = CurrentDefaultCaptureDevice.Id;
+                            _configService.Save();
+                        }
+
                         DevicesRefreshed?.Invoke(this, EventArgs.Empty);
                     }
                     catch { }

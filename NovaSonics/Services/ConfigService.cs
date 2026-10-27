@@ -118,8 +118,29 @@ namespace NovaSonics.Services
             }
         }
 
+        private System.Threading.Timer? _saveDebounceTimer;
+        private readonly object _saveTimerLock = new();
+
         public void Save()
         {
+            lock (_saveTimerLock)
+            {
+                _saveDebounceTimer?.Dispose();
+                _saveDebounceTimer = new System.Threading.Timer(_ =>
+                {
+                    SaveImmediate();
+                }, null, 150, System.Threading.Timeout.Infinite);
+            }
+        }
+
+        public void SaveImmediate()
+        {
+            lock (_saveTimerLock)
+            {
+                _saveDebounceTimer?.Dispose();
+                _saveDebounceTimer = null;
+            }
+
             lock (_fileLock)
             {
                 try

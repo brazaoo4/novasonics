@@ -177,7 +177,12 @@ namespace NovaSonics.ViewModels
                 MixerVM.RebindSelectedDevices();
                 if (isOnline)
                 {
-                    EqualizerVM.ReloadFromConfig();
+                    // Headset EEPROM retains hardware EQ across power cycles.
+                    // If hardware mic volume in config is configured, ensure it is active on the headset.
+                    if (_configService.Config.HardwareMicVolume > 0)
+                    {
+                        _ = _headsetService.SetMicVolumeLevelAsync(_configService.Config.HardwareMicVolume);
+                    }
                 }
             });
         }

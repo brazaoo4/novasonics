@@ -232,7 +232,8 @@ namespace NovaSonics.ViewModels
             SelectedPreset = "Flat";
             ApplyPresetValues("Flat");
             AutoApplyToHeadset();
-            StatusMessage = "Equalizer reset to Flat (0.0 dB)";
+            _ = _headsetService.ResetMicrophoneDspAndGainAsync();
+            StatusMessage = "Equalizer and Headset Mic DSP reset to Flat (0.0 dB)";
         }
     }
 }

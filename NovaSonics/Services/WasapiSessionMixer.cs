@@ -384,9 +384,17 @@ namespace NovaSonics.Services
 
                     try
                     {
-                        _defaultCaptureDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
+                        _defaultCaptureDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
                     }
                     catch { }
+                    if (_defaultCaptureDevice == null)
+                    {
+                        try { _defaultCaptureDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console); } catch { }
+                    }
+                    if (_defaultCaptureDevice == null)
+                    {
+                        try { _defaultCaptureDevice = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications); } catch { }
+                    }
 
                     if (_defaultRenderDevice != null)
                     {
@@ -553,6 +561,30 @@ namespace NovaSonics.Services
                     {
                         RebindEndpoint(currentDef.ID);
                         return;
+                    }
+                }
+                catch { }
+
+                try
+                {
+                    MMDevice? currentCap = null;
+                    try { currentCap = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia); } catch { }
+                    if (currentCap == null)
+                    {
+                        try { currentCap = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console); } catch { }
+                    }
+                    if (currentCap == null)
+                    {
+                        try { currentCap = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications); } catch { }
+                    }
+                    using (currentCap)
+                    {
+                        if (currentCap != null && !string.IsNullOrEmpty(currentCap.ID) &&
+                            !string.Equals(currentCap.ID, _defaultCaptureDevice?.ID, StringComparison.OrdinalIgnoreCase))
+                        {
+                            RebindEndpoint();
+                            return;
+                        }
                     }
                 }
                 catch { }
@@ -1301,6 +1333,16 @@ namespace NovaSonics.Services
                     if (!string.Equals(_defaultRenderDeviceId, defaultDeviceId, StringComparison.OrdinalIgnoreCase))
                     {
                         RebindEndpoint(defaultDeviceId);
+                    }
+                });
+            }
+            else if (flow == DataFlow.Capture && (role == Role.Multimedia || role == Role.Console || role == Role.Communications))
+            {
+                Task.Run(() =>
+                {
+                    if (!string.Equals(_defaultCaptureDevice?.ID, defaultDeviceId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        RebindEndpoint();
                     }
                 });
             }

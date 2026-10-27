@@ -101,3 +101,43 @@ This document records all root causes discovered during the Phase 0A emergency c
     * **Finding**: Turning off the wireless headset triggered a cascade that froze the UI thread (`AppHang_NovaSonics.exe`): (1) `WasapiSessionMixer.RebindEndpoint()` forced itself onto the UI Dispatcher and called `IAudioEndpointVolume::UnregisterControlChangeNotify` and `Dispose()` synchronously, deadlocking against Windows `AudioSrv` locks; (2) `MixerViewModel` subscribed to `CollectionChanged` across three device collections, flooding the Dispatcher with dozens of `RebindSelectedDevices` operations during device refresh; (3) `OnSelected<Channel>DeviceChanged` lacked equality guards, re-triggering endpoint switching in an infinite loop; (4) `RefreshDevices()` had an unwanted side-effect calling `SetDefaultEndpointForAllRoles` during queries; (5) `_peakTimer` ran COM queries directly on the UI Dispatcher thread.
     * **Fix**: Migrated `_peakTimer` and `_sessionRefreshTimer` from `DispatcherTimer` to MTA `System.Threading.Timer` instances; offloaded COM device unregistration/disposal to detached background tasks outside of `_sessionLock`; removed `CollectionChanged` subscriptions from `MixerViewModel` and added equality guards on all channel device selectors; removed hardware switching side-effects from `RefreshDevices()`; and wrapped `HandleHeadsetPowerStateChanged` in `Task.Run`.
 
+---
+
+## Part 4: Arctis Nova 7 Microphone & Hardware PEQ Audit, Device Switching & Performance Hardening (v1.1.0)
+
+19. **BUG-QA-19: Headset Microphone Muting & EEPROM DSP Corruption on PID 0x22A1 (`ArctisNova7Device.cs`, `MainViewModel.cs`, `EqualizerViewModel.cs`, `NovaSonicsConfig.cs`)** — `[FIXED]`
+    * **Finding**: The user's microphone stopped working and required a factory reset in SteelSeries GG. Investigation revealed two compounding root causes:
+      1. Live `%APPDATA%\NovaSonics\config.json` contained `"HardwareMicVolume": 0`. In `ArctisNova7Device.ReadHardwareSettingsFromDevice()`, polling `0x20` every 5 seconds read an uninitialized/waking zero response (`[0x00, 0x20, 0x00, 0x00, 0x00]`) or stale HID input buffer due to lack of response draining, which set `Status.MicVolumeLevel = 0` and persisted `HardwareMicVolume = 0` (hardware preamp gain 0 / muted).
+      2. In commit `aaae153`, `SetEqualizerBandsAsync` was changed to unconditionally send the Gen 1 10-byte Graphic EQ packet (`0x33`) to `0x22A1` (Upgrade / Gen 2 firmware). On `0x22A1`, opcode `0x33` is Parametric EQ (`parametric_eq`) expecting `connection_type` at byte 2 (`0x00` = 2.4G, `0x01` = BT, `0x02` = Microphone PEQ) followed by ten 6-byte biquad filter structs. The 10-byte packet set `connection_type = b0` (where `b0 == 2` corrupts Microphone PEQ) and filled biquads with invalid `frequency = 0` and `q_factor = 0`, burned to EEPROM via `0x09` on every single power-on in `MainViewModel.OnPowerStateChanged`.
+    * **Fix**:
+      - Restored the 4-packet Gen 2 PEQ sequence (`0xA7` + `0x33` with `connection_type = 0x00` and valid biquad bounds + `0x27` + `0x09`) for all Gen 2/Upgrade PIDs (`0x22A1`, `0x227E`, `0x229E`, etc.), reserving 10-byte Graphic EQ strictly for `LegacyBatteryScalePids`.
+      - Added `ResetMicrophoneDspAndGainAsync()` helper and wired it to `EqualizerViewModel.ResetFlat` to allow one-click reset/repair of headset microphone PEQ and gain (`0x37 = 7`).
+      - In `SendAndReceiveCommand()`, drained stale unread input reports from `_commandStream` before writing and verified opcode echo.
+      - In `ReadHardwareSettingsFromDevice()`, guarded against all-zero payloads and stopped running `0x20` queries every 5 seconds (reading once on connect after settle delay).
+      - Auto-healed `HardwareMicVolume <= 0` to `7` in `NovaSonicsConfig.ValidateAndSanitize()`.
+      - Removed redundant `AutoApplyToHeadset()` burn from `MainViewModel.OnPowerStateChanged`.
+
+20. **BUG-QA-20: Repeated `InvalidCastException` Crashes in `TrySyncCaptureDevice` (`DeviceSwitchService.cs`, `crash.log`)** — `[FIXED]`
+    * **Finding**: `%APPDATA%\NovaSonics\crash.log` logged dozens of `System.InvalidCastException: Unable to cast COM object of type 'System.__ComObject' to interface type 'NAudio.CoreAudioApi.Interfaces.IMMDevice'... E_NOINTERFACE at DeviceSwitchService.<>c__DisplayClass45_2.<TrySyncCaptureDevice>b__3()`. `RunOnUI` used `Dispatcher.BeginInvoke` (asynchronous), while `finally { cap.Dispose(); }` ran on the calling background thread before the UI thread accessed `cap.ID`.
+    * **Fix**: Extracted `string capId = cap.ID;` and `string capName = cap.FriendlyName;` into local variables before calling `SetDefaultEndpointForAllRoles` and before `cap.Dispose()`, passing only the immutable `capId` string into `RunOnUI`.
+
+21. **BUG-QA-21: Input (Capture) Device Default Changes & Hotplugs Ignored (`DeviceSwitchService.cs`, `WasapiSessionMixer.cs`)** — `[FIXED]`
+    * **Finding**: `IMMNotificationClient.OnDefaultDeviceChanged` in both `DeviceSwitchService` and `WasapiSessionMixer` checked only `flow == DataFlow.Render`, ignoring `DataFlow.Capture` completely. In addition, `OnDeviceStateChanged`, `OnDeviceAdded`, and `OnDeviceRemoved` were dropped when `_isSwitchingEndpoint` was active, and `WasapiSessionMixer.RefreshSessions()` only checked if the default Render endpoint changed.
+    * **Fix**: Added `DataFlow.Capture` handling to `OnDefaultDeviceChanged` in both services; checked default capture endpoint ID in `WasapiSessionMixer.RefreshSessions()`; removed `if (_isSwitchingEndpoint) return;` from device state/add/remove topology events; and queried `Role.Multimedia` first (with fallbacks to `Role.Console` and `Role.Communications`) for capture endpoints.
+
+22. **BUG-QA-22: Smart Auto-Switch Device Hijacking (`DeviceSwitchService.cs`)** — `[FIXED]`
+    * **Finding**: In `OnTopologyChangedDebounced`, `_knownOnlineDeviceIds` was not checked when evaluating `topPriority`, causing any device state change to switch back to `topPriority` even if the user deliberately selected another audio output.
+    * **Fix**: Added `isNewlyConnected = topPriority != null && !_knownOnlineDeviceIds.Contains(topPriority.Id)` guard so auto-switching only triggers if the current default went offline or a higher-priority device was newly connected.
+
+23. **BUG-QA-23: Duplicate `PowerStateChanged` Events & Broken `_syncStream` Reconnection (`ArctisNova7Device.cs`)** — `[FIXED]`
+    * **Finding**: `previousOnline` was local to `PollingLoop` and not shared with `AsyncEventReaderLoop`, firing `PowerStateChanged` twice per power transition. Also `EnsureConnected()` returned `true` if `_commandStream != null` even if `_syncStream == null`, preventing real-time `0x45` ChatMix and `0xB9` power interrupts from recovering if the sync stream faulted.
+    * **Fix**: Added shared `_lastNotifiedOnline` field and `NotifyPowerState(isOnline)` method under `_ioLock`; ensured `EnsureConnected()` attempts to open `_syncStream` if null even when `_commandStream` is already open; and reduced offline poll interval from 2000ms to 750ms.
+
+24. **BUG-QA-24: 30-Second `EmptyWorkingSet` Hard Page-Fault Stalls (`MainWindow.xaml.cs`)** — `[FIXED]`
+    * **Finding**: `MainWindow.xaml.cs` ran a 30-second timer calling `SetProcessWorkingSetSizeEx(-1, -1)` and `EmptyWorkingSet`, forcing the OS kernel to page out the entire process working set every 30 seconds and causing 200–800ms stalls on device switch, ChatMix dial turn, or window wake.
+    * **Fix**: Removed the 30-second loop and `EmptyWorkingSet` P/Invoke calls completely. Replaced `TrimMemory` on window hide with non-blocking `GC.Collect(1, GCCollectionMode.Optimized, blocking: false)` without working-set eviction.
+
+25. **BUG-QA-25: UI Thread Blocking on `FileStream.Flush(true)` & Synchronous Device Cycling (`ConfigService.cs`, `DeviceManagerViewModel.cs`)** — `[FIXED]`
+    * **Finding**: `ConfigService.Save()` called `fs.Flush(flushToDisk: true)` synchronously on every slider tick and device switch, issuing hardware file flush syscalls that stalled calling threads. In addition, `SwitchNextDevice()` and `SwitchPreviousDevice()` ran synchronously on the UI thread.
+    * **Fix**: Debounced `ConfigService.Save()` with a 150ms coalesce timer while providing `SaveImmediate()` for shutdown/export; offloaded `SwitchNextDevice()` and `SwitchPreviousDevice()` to background `Task.Run`.
+

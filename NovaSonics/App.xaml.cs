@@ -184,6 +184,7 @@ namespace NovaSonics
             try { _ipcCts?.Cancel(); } catch { }
             try { _showWindowEvent?.Dispose(); } catch { }
             _showWindowEvent = null;
+            try { _configService?.SaveImmediate(); } catch { }
             _headsetService?.Dispose();
             _mixerService?.Dispose();
             _deviceService?.Dispose();
