@@ -154,7 +154,7 @@ Routes individual mixer channels (`Game`, `Media`, `Chat`, `Mic`) to specific ph
 Provides fully autonomous, one-click in-place application updates for both Installed (`Inno Setup`) and Portable (`ZIP`) installations directly from the Settings tab:
 * **Installation Mode Detection**:
   * Detects presence of `unins000.exe` in `AppContext.BaseDirectory` to identify `IsInstalledVersion`.
-  * Exposes `CurrentVersionDisplay` (e.g. `v1.1.1 (Installed)` or `v1.1.1 (Portable)`).
+  * Exposes `CurrentVersionDisplay` (e.g. `v1.1.2 (Installed)` or `v1.1.2 (Portable)`).
 * **GitHub Releases API Query**:
   * Queries `https://api.github.com/repos/brazaoo4/novasonics/releases/latest` with a 10s timeout and `User-Agent: NovaSonics-Updater`.
   * Dynamically selects the proper release asset: `*Setup*.exe` for Installed builds or `*Portable*.zip` for Portable builds.
