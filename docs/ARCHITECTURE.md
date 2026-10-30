@@ -119,7 +119,8 @@ Implements `IMMNotificationClient` to monitor Windows audio endpoint topology ch
 * **300ms Coalescing Debounce Timer**:
   * Windows audio endpoint notifications (`OnDeviceStateChanged`, `OnDeviceAdded`, `OnDeviceRemoved`) often arrive in bursts of 5–15 events. Rapid events are coalesced into a single 300ms debounce timer (`_topologyDebounceTimer`), eliminating thread contention and race conditions.
 * **Smart Priority Auto-Switching vs. Manual Defaults**:
-  * Tracks `_knownOnlineDeviceIds` across topology passes. Auto-switching only switches to a higher-priority device if that device is **newly connected** (transitioned from offline to online). General topology notifications do not revert manual user device selections.
+  * Tracks `_knownOnlineDeviceIds` across topology passes. Auto-switching only switches to a higher-priority device if that device is **newly connected** (transitioned from offline to online) or if config channels are out of sync (`configOutOfSync`). General topology notifications do not revert manual user device selections.
+  * In `OnDefaultDeviceChanged`, if Windows switches the system default to a newly connected device, `DeviceSwitchService` refreshes the device topology immediately, updates `CurrentDefaultDevice` and channel configurations, and dispatches `DefaultDeviceChanged` and capture sync without requiring the UI window to be opened.
   * Clicking **"Set Default"** on any online device promotes it to index 0 of `PriorityDevices`, saves the list synchronously, and executes an immediate system-wide role switch via `IPolicyConfigClient` (`eConsole`, `eMultimedia`, `eCommunications`).
 * **Wireless Power-State Integration & Channel Follow**:
   * The Nova 7 USB dongle remains present in Windows even when the headset is turned off. `DeviceSwitchService` correlates Windows device availability with the headset's physical wireless power state (`PowerStateChanged`).

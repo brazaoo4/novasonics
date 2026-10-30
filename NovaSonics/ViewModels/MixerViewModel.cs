@@ -200,6 +200,15 @@ namespace NovaSonics.ViewModels
                             EnforceAllChannelRoutes();
                         }
 #pragma warning restore MVVMTK0034
+
+                        Task.Run(() =>
+                        {
+                            try
+                            {
+                                _mixerService.RebindEndpoint(activeDev.Id);
+                            }
+                            catch { }
+                        });
                     }
                     finally
                     {
@@ -326,9 +335,16 @@ namespace NovaSonics.ViewModels
             }
         }
 
+        private bool _hasPerformedInitialRebind;
+
         public void RebindSelectedDevices()
         {
             var cfg = _configService.Config;
+            string? prevMasterId = SelectedMasterDevice?.Id;
+            string? prevGameId = SelectedGameDevice?.Id;
+            string? prevMediaId = SelectedMediaDevice?.Id;
+            string? prevChatId = SelectedChatDevice?.Id;
+
             var defOut = ActivePlaybackDevices.FirstOrDefault(d => d.IsDefault) 
                          ?? ActivePlaybackDevices.FirstOrDefault(d => d.Id == _deviceService.CurrentDefaultDevice?.Id) 
                          ?? ActivePlaybackDevices.FirstOrDefault()
@@ -376,6 +392,12 @@ namespace NovaSonics.ViewModels
                     ? CaptureDevices.FirstOrDefault(d => d.Id == cfg.MicDeviceId) 
                     : null) ?? defIn;
 
+                bool devicesChanged = !_hasPerformedInitialRebind ||
+                    !string.Equals(prevMasterId, targetMaster?.Id, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(prevGameId, targetGame?.Id, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(prevMediaId, targetMedia?.Id, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(prevChatId, targetChat?.Id, StringComparison.OrdinalIgnoreCase);
+
 #pragma warning disable MVVMTK0034
                 _selectedMasterDevice = targetMaster;
                 OnPropertyChanged(nameof(SelectedMasterDevice));
@@ -411,6 +433,29 @@ namespace NovaSonics.ViewModels
                 OnPropertyChanged(nameof(SelectedMediaDeviceId));
                 OnPropertyChanged(nameof(SelectedChatDeviceId));
                 OnPropertyChanged(nameof(SelectedMicDeviceId));
+
+                if (devicesChanged && targetMaster != null)
+                {
+                    _hasPerformedInitialRebind = true;
+                    if (syncAll)
+                    {
+                        _routingService.ClearAllPersistedEndpoints();
+                    }
+                    else
+                    {
+                        EnforceAllChannelRoutes();
+                    }
+
+                    string? masterId = targetMaster.Id;
+                    Task.Run(() =>
+                    {
+                        try
+                        {
+                            _mixerService.RebindEndpoint(masterId);
+                        }
+                        catch { }
+                    });
+                }
             }
             finally
             {

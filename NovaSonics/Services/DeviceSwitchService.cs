@@ -25,6 +25,8 @@ namespace NovaSonics.Services
         private string? _pendingDefaultDeviceId;
         private DateTime _pendingDefaultDeviceExpiry = DateTime.MinValue;
         private DateTime _switchCooldownExpiry = DateTime.MinValue;
+        private string? _lastExternalRenderDefaultId;
+        private DateTime _lastExternalRenderDefaultTime = DateTime.MinValue;
 
         public ObservableCollection<AudioDeviceModel> PlaybackDevices { get; } = new();
         public ObservableCollection<AudioDeviceModel> ActivePlaybackDevices { get; } = new();
@@ -226,22 +228,13 @@ namespace NovaSonics.Services
                 int currentIdx = activePriority.FindIndex(d => d.IsDefault);
 
                 // If the current Windows default endpoint is offline (e.g. powered-off Nova 7 dongle) or excluded,
-                // mark the highest-priority online device as default for display badge calculations
-                if (currentIdx < 0 && activePriority.Count > 0)
-                {
-                    var fallback = activePriority[0];
-                    foreach (var d in sorted)
-                    {
-                        d.IsDefault = false;
-                    }
-                    fallback.IsDefault = true;
-                    currentIdx = 0;
-                }
+                // calculate Next/Previous badges relative to the highest-priority online device without spoofing IsDefault
+                int badgeRefIdx = currentIdx >= 0 ? currentIdx : 0;
 
-                if (currentIdx >= 0 && activePriority.Count > 1)
+                if (activePriority.Count > 1)
                 {
-                    int nextIdx = (currentIdx + 1) % activePriority.Count;
-                    int prevIdx = (currentIdx - 1 + activePriority.Count) % activePriority.Count;
+                    int nextIdx = (badgeRefIdx + 1) % activePriority.Count;
+                    int prevIdx = (badgeRefIdx - 1 + activePriority.Count) % activePriority.Count;
                     activePriority[nextIdx].IsNextDevice = true;
                     if (prevIdx != nextIdx)
                     {
@@ -524,10 +517,15 @@ namespace NovaSonics.Services
             _pendingDefaultDeviceExpiry = DateTime.UtcNow.AddMilliseconds(2000);
             _isSwitchingEndpoint = true;
             _switchCooldownExpiry = DateTime.UtcNow.AddMilliseconds(500);
-            bool ok;
+            bool ok = false;
             try
             {
-                ok = SetDefaultEndpointForAllRoles(deviceId);
+                for (int attempt = 0; attempt < 3; attempt++)
+                {
+                    ok = SetDefaultEndpointForAllRoles(deviceId);
+                    if (ok) break;
+                    if (attempt < 2) Thread.Sleep(100);
+                }
             }
             finally
             {
@@ -576,6 +574,7 @@ namespace NovaSonics.Services
                 _configService.Save();
 
                 // Update CurrentDefaultDevice immediately in memory on UI thread for 0ms UI responsiveness
+                bool invokedChange = false;
                 RunOnUI(() =>
                 {
                     foreach (var d in PlaybackDevices)
@@ -595,10 +594,11 @@ namespace NovaSonics.Services
                         d.IsPreviousDevice = false;
                     }
                     int currentIdx = activePriority.FindIndex(d => d.IsDefault);
-                    if (currentIdx >= 0 && activePriority.Count > 1)
+                    int badgeRefIdx = currentIdx >= 0 ? currentIdx : 0;
+                    if (activePriority.Count > 1)
                     {
-                        int nextIdx = (currentIdx + 1) % activePriority.Count;
-                        int prevIdx = (currentIdx - 1 + activePriority.Count) % activePriority.Count;
+                        int nextIdx = (badgeRefIdx + 1) % activePriority.Count;
+                        int prevIdx = (badgeRefIdx - 1 + activePriority.Count) % activePriority.Count;
                         activePriority[nextIdx].IsNextDevice = true;
                         if (prevIdx != nextIdx)
                         {
@@ -610,6 +610,7 @@ namespace NovaSonics.Services
                                            ?? ActivePlaybackDevices.FirstOrDefault(d => string.Equals(d.Id, deviceId, StringComparison.OrdinalIgnoreCase));
                     if (CurrentDefaultDevice != null)
                     {
+                        invokedChange = true;
                         DefaultDeviceChanged?.Invoke(this, CurrentDefaultDevice);
                     }
                 });
@@ -620,7 +621,19 @@ namespace NovaSonics.Services
                 // Run full re-scan in background so UI thread never stutters (never delete PropertyStore keys during normal device switches)
                 Task.Run(() =>
                 {
-                    RefreshDevices();
+                    var refreshed = RefreshDevices();
+                    if (!invokedChange)
+                    {
+                        var target = refreshed.FirstOrDefault(d => string.Equals(d.Id, deviceId, StringComparison.OrdinalIgnoreCase));
+                        if (target != null)
+                        {
+                            RunOnUI(() =>
+                            {
+                                CurrentDefaultDevice = target;
+                                DefaultDeviceChanged?.Invoke(this, target);
+                            });
+                        }
+                    }
                 });
             }
             return ok;
@@ -812,8 +825,9 @@ namespace NovaSonics.Services
                 // Headset just powered ON -> wait for Windows audio endpoint to be Active and switch
                 Task.Run(async () =>
                 {
+                    await Task.Delay(250);
                     AudioDeviceModel? novaDevice = null;
-                    for (int attempt = 0; attempt < 5; attempt++)
+                    for (int attempt = 0; attempt < 8; attempt++)
                     {
                         var devices = RefreshDevices();
                         novaDevice = devices.FirstOrDefault(d => d.IsNovaHeadset && !d.IsExcluded && d.IsOnline);
@@ -821,7 +835,7 @@ namespace NovaSonics.Services
                         {
                             break;
                         }
-                        await Task.Delay(350);
+                        await Task.Delay(300);
                     }
 
                     if (novaDevice != null && !string.IsNullOrEmpty(novaDevice.Id))
@@ -916,10 +930,10 @@ namespace NovaSonics.Services
                         .Where(d => !d.IsExcluded && d.IsOnline && (!d.IsNovaHeadset || _lastKnownHeadsetOnline) && !string.IsNullOrEmpty(d.Id))
                         .ToList();
 
-                    bool isCurrentDefActive = CurrentDefaultDevice != null && CurrentDefaultDevice.IsOnline;
+                    bool isCurrentDefActive = CurrentDefaultDevice != null && CurrentDefaultDevice.IsOnline && !CurrentDefaultDevice.IsExcluded;
                     if (!isCurrentDefActive)
                     {
-                        // Current default device went offline -> fallback to highest-priority online device
+                        // Current default device went offline or is excluded -> fallback to highest-priority online device
                         var fallback = currentOnline
                             .OrderBy(d => d.PriorityOrder)
                             .FirstOrDefault();
@@ -932,20 +946,37 @@ namespace NovaSonics.Services
                     }
                     else
                     {
-                        // Check if a higher-priority online device newly came online
+                        // Check if a higher-priority online device newly came online, if Windows PnP auto-switched to a newly connected lower-priority device, OR if config is out of sync
                         var topPriority = currentOnline
                             .OrderBy(d => d.PriorityOrder)
                             .FirstOrDefault();
 
-                        bool isNewlyConnected = topPriority != null && !_knownOnlineDeviceIds.Contains(topPriority.Id);
+                        bool isTopNewlyConnected = topPriority != null && !_knownOnlineDeviceIds.Contains(topPriority.Id);
+                        bool isCurrentNewlyConnected = CurrentDefaultDevice != null && !_knownOnlineDeviceIds.Contains(CurrentDefaultDevice.Id);
 
-                        if (topPriority != null && CurrentDefaultDevice != null &&
+                        bool higherPriorityAvailable = topPriority != null && CurrentDefaultDevice != null &&
                             topPriority.PriorityOrder < CurrentDefaultDevice.PriorityOrder &&
-                            topPriority.Id != CurrentDefaultDevice.Id &&
-                            isNewlyConnected)
+                            topPriority.Id != CurrentDefaultDevice.Id;
+
+                        bool configOutOfSync = topPriority != null && CurrentDefaultDevice != null &&
+                            topPriority.Id == CurrentDefaultDevice.Id &&
+                            !string.Equals(_configService.Config.MasterDeviceId, topPriority.Id, StringComparison.OrdinalIgnoreCase);
+
+                        if (higherPriorityAvailable && topPriority != null && (isTopNewlyConnected || isCurrentNewlyConnected || CurrentDefaultDevice?.PriorityOrder == 999))
+                        {
+                            bool switched = SwitchToDevice(topPriority.Id);
+                            if (switched && isTopNewlyConnected)
+                            {
+                                _notificationService?.ShowCustomToast("Device Connected", $"{topPriority.Name} is online. Switched to high-priority output.");
+                            }
+                        }
+                        else if (configOutOfSync && topPriority != null)
                         {
                             SwitchToDevice(topPriority.Id);
-                            _notificationService?.ShowCustomToast("Device Connected", $"{topPriority.Name} is online. Switched to high-priority output.");
+                            if (isTopNewlyConnected)
+                            {
+                                _notificationService?.ShowCustomToast("Device Connected", $"{topPriority.Name} is online. Switched to high-priority output.");
+                            }
                         }
                     }
 
@@ -995,54 +1026,80 @@ namespace NovaSonics.Services
 
             if (flow == DataFlow.Render && (role == Role.Multimedia || role == Role.Console))
             {
-                if (string.Equals(_pendingDefaultDeviceId, defaultDeviceId, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(_pendingDefaultDeviceId, defaultDeviceId, StringComparison.OrdinalIgnoreCase) &&
+                    DateTime.UtcNow < _pendingDefaultDeviceExpiry)
                 {
-                    _pendingDefaultDeviceId = null;
-                    _pendingDefaultDeviceExpiry = DateTime.MinValue;
                     return;
                 }
 
-                RunOnUI(() =>
+                // Deduplicate consecutive Role.Console + Role.Multimedia notifications for the same endpoint
+                var now = DateTime.UtcNow;
+                if (string.Equals(_lastExternalRenderDefaultId, defaultDeviceId, StringComparison.OrdinalIgnoreCase) &&
+                    (now - _lastExternalRenderDefaultTime).TotalMilliseconds < 300)
+                {
+                    return;
+                }
+                _lastExternalRenderDefaultId = defaultDeviceId;
+                _lastExternalRenderDefaultTime = now;
+
+                Task.Run(() =>
                 {
                     try
                     {
-                        foreach (var d in PlaybackDevices)
+                        bool wasAlreadyKnownOnline = _knownOnlineDeviceIds.Contains(defaultDeviceId);
+                        var refreshed = RefreshDevices();
+                        var targetDevice = refreshed.FirstOrDefault(d => string.Equals(d.Id, defaultDeviceId, StringComparison.OrdinalIgnoreCase));
+                        if (targetDevice == null) return;
+
+                        if (_configService.Config.AutoSwitchEnabled)
                         {
-                            d.IsDefault = string.Equals(d.Id, defaultDeviceId, StringComparison.OrdinalIgnoreCase);
-                            if (d.IsDefault)
+                            // 1. Never adopt an excluded or offline device when AutoSwitch is enabled
+                            if (targetDevice.IsExcluded || !targetDevice.IsOnline)
                             {
-                                CurrentDefaultDevice = d;
+                                TriggerTopologyDebounce();
+                                return;
+                            }
+
+                            // 2. If this device was just plugged in (not previously online) and a higher-priority online device
+                            //    is already active, do not let Windows PnP hijack output—let OnTopologyChangedDebounced switch back
+                            if (!wasAlreadyKnownOnline)
+                            {
+                                var topOnline = refreshed
+                                    .Where(d => !d.IsExcluded && d.IsOnline && (!d.IsNovaHeadset || _lastKnownHeadsetOnline) && !string.IsNullOrEmpty(d.Id))
+                                    .OrderBy(d => d.PriorityOrder)
+                                    .FirstOrDefault();
+
+                                if (topOnline != null && topOnline.PriorityOrder < targetDevice.PriorityOrder &&
+                                    !string.Equals(topOnline.Id, targetDevice.Id, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    TriggerTopologyDebounce();
+                                    return;
+                                }
                             }
                         }
-                        foreach (var d in ActivePlaybackDevices)
-                        {
-                            d.IsDefault = string.Equals(d.Id, defaultDeviceId, StringComparison.OrdinalIgnoreCase);
-                        }
 
-                        // Recalculate next/prev badges
-                        var activePriority = PlaybackDevices.Where(d => !d.IsExcluded && d.IsOnline).OrderBy(d => d.PriorityOrder).ToList();
-                        foreach (var d in activePriority)
+                        _configService.Config.MasterDeviceId = targetDevice.Id;
+                        if (_configService.Config.UseSameDeviceOnAllChannels)
                         {
-                            d.IsNextDevice = false;
-                            d.IsPreviousDevice = false;
+                            _configService.Config.GameDeviceId = targetDevice.Id;
+                            _configService.Config.MediaDeviceId = targetDevice.Id;
+                            _configService.Config.ChatDeviceId = targetDevice.Id;
                         }
-                        int currentIdx = activePriority.FindIndex(d => d.IsDefault);
-                        if (currentIdx >= 0 && activePriority.Count > 1)
+                        _configService.Save();
+
+                        RunOnUI(() =>
                         {
-                            int nextIdx = (currentIdx + 1) % activePriority.Count;
-                            int prevIdx = (currentIdx - 1 + activePriority.Count) % activePriority.Count;
-                            activePriority[nextIdx].IsNextDevice = true;
-                            if (prevIdx != nextIdx)
+                            try
                             {
-                                activePriority[prevIdx].IsPreviousDevice = true;
+                                CurrentDefaultDevice = PlaybackDevices.FirstOrDefault(d => string.Equals(d.Id, targetDevice.Id, StringComparison.OrdinalIgnoreCase))
+                                                       ?? targetDevice;
+                                DefaultDeviceChanged?.Invoke(this, CurrentDefaultDevice);
                             }
-                        }
+                            catch { }
+                        });
 
-                        if (CurrentDefaultDevice != null)
-                        {
-                            DefaultDeviceChanged?.Invoke(this, CurrentDefaultDevice);
-                        }
-                        DevicesRefreshed?.Invoke(this, EventArgs.Empty);
+                        // Also sync capture device if appropriate
+                        TrySyncCaptureDevice(defaultDeviceId);
                     }
                     catch { }
                 });
