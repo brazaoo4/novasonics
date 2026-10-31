@@ -98,7 +98,7 @@ NovaSonics supports all variants of the SteelSeries Arctis Nova 7 wireless heads
 ## 🚀 Installation
 
 ### Option 1: Inno Setup Installer (Recommended)
-1. Download the latest installer `NovaSonics-Setup-v1.1.2.exe` from the [Releases](https://github.com/brazaoo4/novasonics/releases) page.
+1. Download the latest installer `NovaSonics-Setup-v1.1.3.exe` from the [Releases](https://github.com/brazaoo4/novasonics/releases) page.
 2. Run the setup wizard.
    - Choose whether to create a desktop shortcut.
    - Choose whether to launch automatically with Windows (minimized to system tray).
@@ -108,7 +108,7 @@ NovaSonics supports all variants of the SteelSeries Arctis Nova 7 wireless heads
 > **Windows SmartScreen Note**: Because NovaSonics is a freshly built community open-source application without an expensive commercial EV code-signing certificate, Windows SmartScreen may display an alert. Click **"More info"** and then **"Run anyway"**. You can inspect 100% of the source code in this repository.
 
 ### Option 2: Portable Archive (.zip)
-1. Download `NovaSonics-v1.1.2-Portable-win-x64.zip` from [Releases](https://github.com/brazaoo4/novasonics/releases).
+1. Download `NovaSonics-v1.1.3-Portable-win-x64.zip` from [Releases](https://github.com/brazaoo4/novasonics/releases).
 2. Extract the archive into any folder (e.g. `C:\Tools\NovaSonics`).
 3. Run `NovaSonics.exe`. Settings are saved to `%APPDATA%\NovaSonics\config.json`.
 

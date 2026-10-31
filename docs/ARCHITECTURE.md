@@ -122,6 +122,7 @@ Implements `IMMNotificationClient` to monitor Windows audio endpoint topology ch
   * Tracks `_knownOnlineDeviceIds` across topology passes. Auto-switching only switches to a higher-priority device if that device is **newly connected** (transitioned from offline to online) or if config channels are out of sync (`configOutOfSync`). General topology notifications do not revert manual user device selections.
   * In `OnDefaultDeviceChanged`, if Windows switches the system default to a newly connected device, `DeviceSwitchService` refreshes the device topology immediately, updates `CurrentDefaultDevice` and channel configurations, and dispatches `DefaultDeviceChanged` and capture sync without requiring the UI window to be opened.
   * Clicking **"Set Default"** on any online device promotes it to index 0 of `PriorityDevices`, saves the list synchronously, and executes an immediate system-wide role switch via `IPolicyConfigClient` (`eConsole`, `eMultimedia`, `eCommunications`).
+  * Moving a device up/down or drag-reordering in `DeviceManagerViewModel` (`MoveUp`, `MoveDown`, `ReorderPriorityDevice`) updates `PriorityOrder` across all device collections; if `AutoSwitchEnabled` is active and the top available (online and non-excluded) device is not currently active, NovaSonics automatically switches Windows default playback to that device immediately.
 * **Wireless Power-State Integration & Channel Follow**:
   * The Nova 7 USB dongle remains present in Windows even when the headset is turned off. `DeviceSwitchService` correlates Windows device availability with the headset's physical wireless power state (`PowerStateChanged`).
   * When the headset turns on, it takes over as default output and default communications capture device. When `UseSameDeviceOnAllChannels` is true, all mixer channel faders (Master, Game, Media, Chat) synchronously follow the new default device.
@@ -154,7 +155,7 @@ Routes individual mixer channels (`Game`, `Media`, `Chat`, `Mic`) to specific ph
 Provides fully autonomous, one-click in-place application updates for both Installed (`Inno Setup`) and Portable (`ZIP`) installations directly from the Settings tab:
 * **Installation Mode Detection**:
   * Detects presence of `unins000.exe` in `AppContext.BaseDirectory` to identify `IsInstalledVersion`.
-  * Exposes `CurrentVersionDisplay` (e.g. `v1.1.2 (Installed)` or `v1.1.2 (Portable)`).
+  * Exposes `CurrentVersionDisplay` (e.g. `v1.1.3 (Installed)` or `v1.1.3 (Portable)`).
 * **GitHub Releases API Query**:
   * Queries `https://api.github.com/repos/brazaoo4/novasonics/releases/latest` with a 10s timeout and `User-Agent: NovaSonics-Updater`.
   * Dynamically selects the proper release asset: `*Setup*.exe` for Installed builds or `*Portable*.zip` for Portable builds.

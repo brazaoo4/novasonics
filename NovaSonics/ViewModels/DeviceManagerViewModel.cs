@@ -278,21 +278,79 @@ namespace NovaSonics.ViewModels
 
         private void SavePriorityList()
         {
-            _configService.Config.PriorityDevices = PriorityDevices.Select(d => d.Name).ToList();
-            _configService.Save();
-
             for (int i = 0; i < PriorityDevices.Count; i++)
             {
                 PriorityDevices[i].PriorityOrder = i;
             }
 
-            Task.Run(() => _deviceService.RefreshDevices());
+            _configService.Config.PriorityDevices = PriorityDevices.Select(d => d.Name).ToList();
+            _configService.Save();
+
+            foreach (var d in _deviceService.PlaybackDevices)
+            {
+                for (int i = 0; i < PriorityDevices.Count; i++)
+                {
+                    if ((!string.IsNullOrEmpty(d.Id) && !string.IsNullOrEmpty(PriorityDevices[i].Id) && string.Equals(d.Id, PriorityDevices[i].Id, StringComparison.OrdinalIgnoreCase)) ||
+                        string.Equals(d.Name, PriorityDevices[i].Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        d.PriorityOrder = i;
+                        break;
+                    }
+                }
+            }
+            foreach (var d in _deviceService.ActivePlaybackDevices)
+            {
+                for (int i = 0; i < PriorityDevices.Count; i++)
+                {
+                    if ((!string.IsNullOrEmpty(d.Id) && !string.IsNullOrEmpty(PriorityDevices[i].Id) && string.Equals(d.Id, PriorityDevices[i].Id, StringComparison.OrdinalIgnoreCase)) ||
+                        string.Equals(d.Name, PriorityDevices[i].Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        d.PriorityOrder = i;
+                        break;
+                    }
+                }
+            }
+
+            bool switched = false;
+            if (_configService.Config.AutoSwitchEnabled)
+            {
+                var topAvailable = PriorityDevices.FirstOrDefault(d => !d.IsExcluded && d.IsOnline && !string.IsNullOrEmpty(d.Id));
+                string? targetId = topAvailable?.Id;
+                if (string.IsNullOrEmpty(targetId) && topAvailable != null)
+                {
+                    targetId = _deviceService.PlaybackDevices
+                        .FirstOrDefault(p => p.IsOnline && !p.IsExcluded &&
+                                             (string.Equals(p.Name, topAvailable.Name, StringComparison.OrdinalIgnoreCase) ||
+                                              p.Name.Contains(topAvailable.Name, StringComparison.OrdinalIgnoreCase) ||
+                                              topAvailable.Name.Contains(p.Name, StringComparison.OrdinalIgnoreCase)))?.Id;
+                }
+
+                if (!string.IsNullOrEmpty(targetId) && !string.Equals(targetId, _deviceService.CurrentDefaultDevice?.Id, StringComparison.OrdinalIgnoreCase))
+                {
+                    switched = _deviceService.SwitchToDevice(targetId);
+                    if (switched)
+                    {
+                        _notificationService?.ShowCustomToast("Audio Output Switched", $"Switched to {topAvailable!.Name} (Priority Device).");
+                    }
+                }
+            }
+
+            SyncListsFromService();
+
+            if (!switched)
+            {
+                Task.Run(() => _deviceService.RefreshDevices());
+            }
         }
 
         partial void OnAutoSwitchEnabledChanged(bool value)
         {
             _configService.Config.AutoSwitchEnabled = value;
             _configService.Save();
+            if (value)
+            {
+                SavePriorityList();
+            }
         }
 
         partial void OnAutoSwitchAtBootChanged(bool value)
